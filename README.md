@@ -10,6 +10,8 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **Variables Editor** with JSON validation, error feedback, and a visual helper.
 - **Schema Explorer** to introspect or load demo schemas.
 - **Results Panel** with formatted/raw/table views, response metadata, quick copy/download, and clearing.
+- **Request Controls** with configurable timeouts and cancel support for long-running requests.
+- **Activity Log** to review structured request events with INFO/WARN/ERROR levels.
 - **Query History** to reload, re-run, pin, delete, copy, import, or export past queries/variables.
 - **History filters** and status summaries for recent requests.
 
@@ -45,6 +47,8 @@ npm test         # run Node-based unit tests
 - Use "Clear unpinned" to trim history while keeping your pinned highlights.
 - Clear the Results panel to remove outdated data or error messages between runs.
 - Review response metadata (payload size, top-level data keys) to sanity-check results quickly.
+- Use the timeout control in the Query Editor to cancel long-running requests (set to `0` to disable timeouts).
+- Use the Activity Log in the Results tab to inspect request events and debugging context.
 
 ## Building
 

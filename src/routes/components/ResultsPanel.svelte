@@ -7,6 +7,7 @@
   let tableData = $state(null);
   let historyFilter = $state('');
   let historyStatusFilter = $state('all');
+  let logLevelFilter = $state('all');
 
   // Subscribe to store changes
   graphqlStore.subscribe(state => {
@@ -38,11 +39,13 @@
     const successCount = entries.filter(entry => entry.status === 'success').length;
     const errorCount = entries.filter(entry => entry.status === 'error').length;
     const invalidCount = entries.filter(entry => entry.status === 'invalid').length;
+    const cancelledCount = entries.filter(entry => entry.status === 'cancelled').length;
     return {
       total,
       successCount,
       errorCount,
       invalidCount,
+      cancelledCount,
       successRate: total ? Math.round((successCount / total) * 100) : 0
     };
   });
@@ -55,6 +58,12 @@
       size: serialized.length,
       dataKeys,
     };
+  });
+
+  const filteredLogs = $derived(() => {
+    const entries = storeState.logs ?? [];
+    if (logLevelFilter === 'all') return entries;
+    return entries.filter(entry => entry.level === logLevelFilter);
   });
 
   function copyResults() {
@@ -94,6 +103,10 @@
 
   function clearUnpinnedHistory() {
     graphqlStore.clearUnpinnedHistory();
+  }
+
+  function clearLogs() {
+    graphqlStore.clearLogs();
   }
 
   function downloadHistory() {
@@ -318,6 +331,7 @@
             <span>✅ {historySummary.successCount}</span>
             <span>❌ {historySummary.errorCount}</span>
             <span>⚠️ {historySummary.invalidCount}</span>
+            <span>⏹️ {historySummary.cancelledCount}</span>
             <span>Success rate: {historySummary.successRate}%</span>
           </div>
         </div>
@@ -346,6 +360,12 @@
           >
             ⚠️ Invalid
           </button>
+          <button
+            onclick={() => (historyStatusFilter = 'cancelled')}
+            class="px-2 py-1 rounded border {historyStatusFilter === 'cancelled' ? 'bg-slate-600 text-white border-slate-600' : 'bg-white text-gray-700 border-gray-200'}"
+          >
+            ⏹️ Cancelled
+          </button>
         </div>
       </div>
       <ul class="divide-y divide-gray-200 max-h-48 overflow-auto">
@@ -362,6 +382,8 @@
                         ? '✅'
                         : entry.status === 'error'
                           ? '❌'
+                          : entry.status === 'cancelled'
+                            ? '⏹️'
                           : '⚠️'} {entry.endpoint || 'No endpoint'}
                     </span>
                     {#if entry.pinned}
@@ -429,6 +451,54 @@
     </div>
   {/if}
 
+  {#if storeState.logs?.length}
+    <div class="mt-4 border border-gray-200 rounded">
+      <div class="flex items-center justify-between px-4 py-2 bg-gray-50">
+        <h3 class="text-sm font-semibold text-gray-800">Activity Log</h3>
+        <div class="flex items-center gap-2 text-xs">
+          <select
+            value={logLevelFilter}
+            onchange={(event) => (logLevelFilter = event.target.value)}
+            class="border border-gray-200 rounded px-2 py-1 text-xs"
+          >
+            <option value="all">All levels</option>
+            <option value="INFO">INFO</option>
+            <option value="WARN">WARN</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+          <button
+            onclick={clearLogs}
+            class="text-xs text-gray-600 hover:text-gray-900"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+      <ul class="divide-y divide-gray-200 max-h-40 overflow-auto text-xs">
+        {#if filteredLogs.length === 0}
+          <li class="px-4 py-3 text-gray-500">No log entries match the selected level.</li>
+        {:else}
+          {#each filteredLogs as entry}
+            <li class="px-4 py-2">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">{entry.level}</span>
+                    <span class="text-gray-500">{new Date(entry.timestamp).toLocaleString()}</span>
+                  </div>
+                  <p class="text-gray-700 mt-1">{entry.message}</p>
+                  {#if entry.context && Object.keys(entry.context).length}
+                    <pre class="mt-1 text-[11px] text-gray-500 whitespace-pre-wrap">{JSON.stringify(entry.context, null, 2)}</pre>
+                  {/if}
+                </div>
+              </div>
+            </li>
+          {/each}
+        {/if}
+      </ul>
+    </div>
+  {/if}
+
   {#if storeState.results}
     <div class="mt-4 text-sm text-gray-600">
       <div class="flex flex-wrap items-center gap-4">
@@ -459,6 +529,8 @@
             ? '✅'
             : storeState.lastExecution.status === 'error'
               ? '❌'
+              : storeState.lastExecution.status === 'cancelled'
+                ? '⏹️'
               : '⚠️'}
           Last run {storeState.lastExecution.status}
         </span>
