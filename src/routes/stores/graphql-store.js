@@ -1,8 +1,19 @@
 import { writable } from "svelte/store"
+import { buildQueryFromStructure, parseQuery } from "./graphql-helpers.js"
 
-console.log("[v0] graphql-store.js: Initializing GraphQL store")
 
 // Create reactive store for GraphQL state
+const DEFAULT_QUERY = `query GetCountries($first: Int) {
+  countries(first: $first) {
+    code
+    name
+    emoji
+    currency
+  }
+}`
+
+const DEFAULT_VARIABLES = '{\n  "first": 5\n}'
+
 const DEMO_SCHEMAS = {
   blog: {
     name: "Blog & Social Media",
@@ -475,21 +486,17 @@ const DEMO_SCHEMAS = {
 }
 
 function createGraphQLStore() {
+  const HISTORY_LIMIT = 50
   const initialState = {
     endpoint: "https://countries.trevorblades.com/",
-    query: `query GetCountries($first: Int) {
-  countries(first: $first) {
-    code
-    name
-    emoji
-    currency
-  }
-}`,
-    variables: '{\n  "first": 5\n}',
+    query: DEFAULT_QUERY,
+    variables: DEFAULT_VARIABLES,
     results: null,
     schema: null,
     loading: false,
     error: null,
+    history: [],
+    lastExecution: null,
     queryStructure: {
       operations: [
         {
@@ -508,13 +515,26 @@ function createGraphQLStore() {
   const { subscribe, set, update } = writable(initialState)
   const store = { subscribe, set, update }
 
+  const normalizeHistoryEntry = (entry) => ({
+    id: entry.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`),
+    timestamp: entry.timestamp || new Date().toISOString(),
+    endpoint: entry.endpoint ?? "",
+    query: entry.query ?? "",
+    variables: entry.variables ?? "",
+    status: entry.status ?? "success",
+    durationMs: entry.durationMs,
+    statusCode: entry.statusCode,
+    statusText: entry.statusText,
+    error: entry.error,
+    pinned: Boolean(entry.pinned),
+  })
+
   return {
     subscribe,
     set,
     update,
 
     isValidField: (typeName, fieldName) => {
-      console.log("[v0] graphql-store: Validating field:", typeName, fieldName)
       const currentState = get(store)
       if (!currentState.schema) return true // Allow if no schema loaded
 
@@ -525,7 +545,6 @@ function createGraphQLStore() {
     },
 
     isValidArgument: (typeName, fieldName, argName) => {
-      console.log("[v0] graphql-store: Validating argument:", typeName, fieldName, argName)
       const currentState = get(store)
       if (!currentState.schema) return true // Allow if no schema loaded
 
@@ -539,7 +558,6 @@ function createGraphQLStore() {
     },
 
     getValidFieldsForType: (typeName) => {
-      console.log("[v0] graphql-store: Getting valid fields for type:", typeName)
       const currentState = get(store)
       if (!currentState.schema) return []
 
@@ -548,7 +566,6 @@ function createGraphQLStore() {
     },
 
     getValidArgsForField: (typeName, fieldName) => {
-      console.log("[v0] graphql-store: Getting valid args for field:", typeName, fieldName)
       const currentState = get(store)
       if (!currentState.schema) return []
 
@@ -560,7 +577,6 @@ function createGraphQLStore() {
     },
 
     addOperation: (operationType = "query") => {
-      console.log("[v0] graphql-store: Adding new operation:", operationType)
       update((state) => {
         const newOperation = {
           type: operationType,
@@ -585,7 +601,6 @@ function createGraphQLStore() {
     },
 
     removeOperation: (index) => {
-      console.log("[v0] graphql-store: Removing operation at index:", index)
       update((state) => {
         const newOperations = state.queryStructure.operations.filter((_, i) => i !== index)
         if (newOperations.length === 0) {
@@ -614,7 +629,6 @@ function createGraphQLStore() {
     },
 
     setActiveOperation: (index) => {
-      console.log("[v0] graphql-store: Setting active operation:", index)
       update((state) => ({
         ...state,
         queryStructure: {
@@ -630,10 +644,8 @@ function createGraphQLStore() {
     },
 
     updateQueryStructure: (newStructure) => {
-      console.log("[v0] graphql-store: Updating query structure:", newStructure)
       update((state) => {
         const newQuery = buildQueryFromStructure(newStructure)
-        console.log("[v0] graphql-store: Built query from structure:", newQuery)
         return {
           ...state,
           queryStructure: newStructure,
@@ -643,7 +655,6 @@ function createGraphQLStore() {
     },
 
     updateCurrentOperation: (updatedOperation) => {
-      console.log("[v0] graphql-store: Updating current operation:", updatedOperation)
       update((state) => {
         const newOperations = [...state.queryStructure.operations]
         newOperations[state.queryStructure.activeOperationIndex] = updatedOperation
@@ -662,7 +673,6 @@ function createGraphQLStore() {
     },
 
     loadDemoSchema: (schemaKey = "blog") => {
-      console.log("[v0] graphql-store: Loading demo schema:", schemaKey)
       const selectedSchema = DEMO_SCHEMAS[schemaKey]
       if (selectedSchema) {
         update((state) => ({
@@ -675,7 +685,6 @@ function createGraphQLStore() {
     },
 
     addFieldToQuery: (fieldPath, fieldName, args = []) => {
-      console.log("[v0] graphql-store: Adding field to query:", { fieldPath, fieldName, args })
 
       update((state) => {
         const newStructure = { ...state.queryStructure }
@@ -724,7 +733,6 @@ function createGraphQLStore() {
         }
 
         const newQuery = buildQueryFromStructure(newStructure)
-        console.log("[v0] graphql-store: Updated query after adding field:", newQuery)
 
         return {
           ...state,
@@ -735,7 +743,6 @@ function createGraphQLStore() {
     },
 
     removeFieldFromQuery: (fieldPath, fieldName) => {
-      console.log("[v0] graphql-store: Removing field from query:", { fieldPath, fieldName })
 
       update((state) => {
         const newStructure = { ...state.queryStructure }
@@ -768,7 +775,6 @@ function createGraphQLStore() {
         }
 
         const newQuery = buildQueryFromStructure(newStructure)
-        console.log("[v0] graphql-store: Updated query after removing field:", newQuery)
 
         return {
           ...state,
@@ -779,31 +785,163 @@ function createGraphQLStore() {
     },
 
     updateQuery: (newQuery) => {
-      console.log("[v0] graphql-store: Updating query:", newQuery)
       update((state) => {
         const newState = { ...state, query: newQuery }
         newState.queryStructure = parseQuery(newQuery)
-        console.log("[v0] graphql-store: Parsed query structure:", newState.queryStructure)
         return newState
       })
     },
 
     updateVariables: (newVariables) => {
-      console.log("[v0] graphql-store: Updating variables:", newVariables)
       update((state) => ({ ...state, variables: newVariables }))
     },
 
+    addHistoryEntry: (entry) => {
+      update((state) => ({
+        ...state,
+        history: [normalizeHistoryEntry(entry), ...state.history].slice(0, HISTORY_LIMIT),
+      }))
+    },
+
+    clearHistory: () => {
+      update((state) => ({ ...state, history: [] }))
+    },
+
+    importHistory: (entries = []) => {
+      update((state) => {
+        const normalized = entries.map(normalizeHistoryEntry)
+        const existing = state.history ?? []
+        const merged = [...normalized, ...existing]
+        const deduped = Array.from(new Map(merged.map((entry) => [entry.id, entry])).values())
+        return { ...state, history: deduped.slice(0, HISTORY_LIMIT) }
+      })
+    },
+
+    toggleHistoryPin: (entryId) => {
+      update((state) => ({
+        ...state,
+        history: state.history.map((entry) =>
+          entry.id === entryId ? { ...entry, pinned: !entry.pinned } : entry,
+        ),
+      }))
+    },
+
+    removeHistoryEntry: (entryId) => {
+      update((state) => ({
+        ...state,
+        history: state.history.filter((entry) => entry.id !== entryId),
+      }))
+    },
+
+    clearUnpinnedHistory: () => {
+      update((state) => ({
+        ...state,
+        history: state.history.filter((entry) => entry.pinned),
+      }))
+    },
+
+    clearResults: () => {
+      update((state) => ({
+        ...state,
+        results: null,
+        error: null,
+        loading: false,
+        lastExecution: null,
+      }))
+    },
+
+    loadHistoryEntry: (entry) => {
+      update((state) => ({
+        ...state,
+        query: entry.query,
+        variables: entry.variables,
+        endpoint: entry.endpoint,
+        queryStructure: parseQuery(entry.query),
+        error: null,
+      }))
+    },
+
+    getState: () => get(store),
+
+    resetDefaults: () => {
+      update((state) => ({
+        ...state,
+        query: DEFAULT_QUERY,
+        variables: DEFAULT_VARIABLES,
+        results: null,
+        error: null,
+        loading: false,
+        queryStructure: parseQuery(DEFAULT_QUERY),
+      }))
+    },
+
     executeQuery: async () => {
-      console.log("[v0] graphql-store: Executing GraphQL query")
       update((state) => ({ ...state, loading: true, error: null }))
 
-      try {
-        const currentState = store.subscribe((v) => v)()
-        const variables = currentState.variables ? JSON.parse(currentState.variables) : {}
+      const currentState = get(store)
+      const startedAt = Date.now()
+      const entryId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`
 
-        console.log("[v0] graphql-store: Sending request to:", currentState.endpoint)
-        console.log("[v0] graphql-store: Query:", currentState.query)
-        console.log("[v0] graphql-store: Variables:", variables)
+      try {
+        if (!currentState.endpoint) {
+          update((state) => ({
+            ...state,
+            error: "Endpoint is required before executing a query.",
+            loading: false,
+            results: null,
+            lastExecution: {
+              id: entryId,
+              status: "invalid",
+              durationMs: Date.now() - startedAt,
+              endpoint: currentState.endpoint,
+              timestamp: new Date().toISOString(),
+              error: "Endpoint is required before executing a query.",
+            },
+          }))
+          store.addHistoryEntry({
+            id: entryId,
+            timestamp: new Date().toISOString(),
+            endpoint: currentState.endpoint,
+            query: currentState.query,
+            variables: currentState.variables,
+            status: "invalid",
+            durationMs: Date.now() - startedAt,
+            error: "Endpoint is required before executing a query.",
+          })
+          return
+        }
+
+        let variables = {}
+        try {
+          variables = currentState.variables ? JSON.parse(currentState.variables) : {}
+        } catch (parseError) {
+          update((state) => ({
+            ...state,
+            error: `Variables JSON error: ${parseError.message}`,
+            loading: false,
+            results: null,
+            lastExecution: {
+              id: entryId,
+              status: "invalid",
+              durationMs: Date.now() - startedAt,
+              endpoint: currentState.endpoint,
+              timestamp: new Date().toISOString(),
+              error: `Variables JSON error: ${parseError.message}`,
+            },
+          }))
+          store.addHistoryEntry({
+            id: entryId,
+            timestamp: new Date().toISOString(),
+            endpoint: currentState.endpoint,
+            query: currentState.query,
+            variables: currentState.variables,
+            status: "invalid",
+            durationMs: Date.now() - startedAt,
+            error: `Variables JSON error: ${parseError.message}`,
+          })
+          return
+        }
+
 
         const response = await fetch(currentState.endpoint, {
           method: "POST",
@@ -817,25 +955,68 @@ function createGraphQLStore() {
         })
 
         const result = await response.json()
-        console.log("[v0] graphql-store: Query result:", result)
 
+        const errorMessages = Array.isArray(result.errors)
+          ? result.errors.map((err) => err.message).filter(Boolean).join("; ")
+          : null
         update((state) => ({
           ...state,
           results: result,
           loading: false,
+          lastExecution: {
+            id: entryId,
+            status: result.errors ? "error" : "success",
+            durationMs: Date.now() - startedAt,
+            endpoint: currentState.endpoint,
+            timestamp: new Date().toISOString(),
+            statusCode: response.status,
+            statusText: response.statusText,
+            error: errorMessages,
+          },
         }))
+
+        store.addHistoryEntry({
+          id: entryId,
+          timestamp: new Date().toISOString(),
+          endpoint: currentState.endpoint,
+          query: currentState.query,
+          variables: currentState.variables,
+          status: result.errors ? "error" : "success",
+          durationMs: Date.now() - startedAt,
+          statusCode: response.status,
+          statusText: response.statusText,
+          error: errorMessages,
+        })
       } catch (error) {
-        console.error("[v0] graphql-store: Query execution error:", error)
         update((state) => ({
           ...state,
           error: error.message,
           loading: false,
+          results: null,
+          lastExecution: {
+            id: entryId,
+            status: "error",
+            durationMs: Date.now() - startedAt,
+            endpoint: currentState.endpoint,
+            timestamp: new Date().toISOString(),
+            error: error.message,
+          },
         }))
+
+        store.addHistoryEntry({
+          id: entryId,
+          timestamp: new Date().toISOString(),
+          endpoint: currentState.endpoint,
+          query: currentState.query,
+          variables: currentState.variables,
+          status: "error",
+          durationMs: Date.now() - startedAt,
+          error: error.message,
+        })
       }
     },
 
     introspectSchema: async () => {
-      console.log("[v0] graphql-store: Starting schema introspection")
       update((state) => ({ ...state, loading: true }))
 
       const introspectionQuery = `
@@ -879,7 +1060,7 @@ function createGraphQLStore() {
       `
 
       try {
-        const currentState = store.subscribe((v) => v)()
+        const currentState = get(store)
         const response = await fetch(currentState.endpoint, {
           method: "POST",
           headers: {
@@ -889,7 +1070,6 @@ function createGraphQLStore() {
         })
 
         const result = await response.json()
-        console.log("[v0] graphql-store: Schema introspection result:", result)
 
         update((state) => ({
           ...state,
@@ -897,7 +1077,6 @@ function createGraphQLStore() {
           loading: false,
         }))
       } catch (error) {
-        console.error("[v0] graphql-store: Schema introspection error:", error)
         update((state) => ({
           ...state,
           error: error.message,
@@ -907,7 +1086,6 @@ function createGraphQLStore() {
     },
 
     getFieldsForType: (typeName) => {
-      console.log("[v0] graphql-store: Getting fields for type:", typeName)
       const currentState = get(store)
       if (!currentState.schema) return []
 
@@ -916,7 +1094,6 @@ function createGraphQLStore() {
     },
 
     getArgsForField: (typeName, fieldName) => {
-      console.log("[v0] graphql-store: Getting args for field:", typeName, fieldName)
       const currentState = get(store)
       if (!currentState.schema) return []
 
@@ -928,7 +1105,6 @@ function createGraphQLStore() {
     },
 
     getRootQueryFields: () => {
-      console.log("[v0] graphql-store: Getting root query fields")
       const currentState = get(store)
       if (!currentState.schema) return []
 
@@ -937,7 +1113,6 @@ function createGraphQLStore() {
     },
 
     getFieldReturnType: (typeName, fieldName) => {
-      console.log("[v0] graphql-store: Getting return type for field:", typeName, fieldName)
       const currentState = get(store)
       if (!currentState.schema) return null
 
@@ -960,7 +1135,6 @@ function createGraphQLStore() {
     },
 
     getAvailableFieldsForPath: (fieldPath) => {
-      console.log("[v0] graphql-store: Getting available fields for path:", fieldPath)
       const currentState = get(store)
       if (!currentState.schema) return []
 
@@ -983,170 +1157,6 @@ function get(store) {
   let value
   store.subscribe((v) => (value = v))()
   return value
-}
-
-// Parse GraphQL query string into structure
-function parseQuery(queryString) {
-  console.log("[v0] graphql-store: Parsing query string:", queryString)
-
-  try {
-    // Simple regex-based parser for demo purposes
-    const operationMatch = queryString.match(/(query|mutation|subscription)\s+(\w+)?\s*($$[^)]*$$)?\s*{/)
-    const operation = operationMatch ? operationMatch[1] : "query"
-    const name = operationMatch ? operationMatch[2] || "UnnamedOperation" : "UnnamedOperation"
-
-    // Extract variables
-    const variablesMatch = queryString.match(/$$([^)]*)$$/)
-    const variables = []
-    if (variablesMatch) {
-      const varsString = variablesMatch[1]
-      const varMatches = varsString.matchAll(/\$(\w+):\s*(\w+!?)/g)
-      for (const match of varMatches) {
-        variables.push({
-          name: match[1],
-          type: match[2],
-          defaultValue: null,
-        })
-      }
-    }
-
-    // Extract fields (simplified)
-    const fieldsMatch = queryString.match(/{([^}]+)}/)
-    const fields = []
-    if (fieldsMatch) {
-      const fieldsString = fieldsMatch[1]
-      // This is a very simplified field parser
-      const fieldLines = fieldsString
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line)
-
-      for (const line of fieldLines) {
-        if (line.includes("(")) {
-          // Field with arguments
-          const fieldMatch = line.match(/(\w+)\s*$$([^)]*)$$\s*{?([^}]*)}?/)
-          if (fieldMatch) {
-            const fieldName = fieldMatch[1]
-            const argsString = fieldMatch[2]
-            const subFields = fieldMatch[3] ? fieldMatch[3].split(/\s+/).filter((f) => f) : []
-
-            const args = []
-            if (argsString) {
-              const argMatches = argsString.matchAll(/(\w+):\s*([^,\s]+)/g)
-              for (const argMatch of argMatches) {
-                args.push({
-                  name: argMatch[1],
-                  value: argMatch[2],
-                  type: "String", // Simplified
-                })
-              }
-            }
-
-            fields.push({
-              name: fieldName,
-              args: args,
-              fields: subFields,
-            })
-          }
-        } else if (!line.includes("}") && line.length > 0) {
-          // Simple field
-          fields.push({
-            name: line,
-            args: [],
-            fields: [],
-          })
-        }
-      }
-    }
-
-    const structure = {
-      operations: [
-        {
-          type: operation,
-          name: name,
-          variables: variables,
-          fields: fields,
-        },
-      ],
-      activeOperationIndex: 0,
-    }
-
-    console.log("[v0] graphql-store: Parsed structure:", structure)
-    return structure
-  } catch (error) {
-    console.error("[v0] graphql-store: Query parsing error:", error)
-    return {
-      operations: [
-        {
-          type: "query",
-          name: "ParseError",
-          variables: [],
-          fields: [],
-        },
-      ],
-      activeOperationIndex: 0,
-    }
-  }
-}
-
-// Build GraphQL query from structure
-function buildQueryFromStructure(structure) {
-  console.log("[v0] graphql-store: Building query from structure:", structure)
-
-  if (!structure.operations || structure.operations.length === 0) {
-    return "query { }"
-  }
-
-  let fullQuery = ""
-
-  for (let i = 0; i < structure.operations.length; i++) {
-    const operation = structure.operations[i]
-    let query = operation.type
-
-    if (operation.name) {
-      query += ` ${operation.name}`
-    }
-
-    if (operation.variables && operation.variables.length > 0) {
-      const varsString = operation.variables.map((v) => `$${v.name}: ${v.type}`).join(", ")
-      query += `(${varsString})`
-    }
-
-    query += " {\n"
-
-    const buildFields = (fields, indent = "  ") => {
-      let result = ""
-      for (const field of fields) {
-        result += `${indent}${field.name}`
-
-        if (field.args && field.args.length > 0) {
-          const argsString = field.args.map((arg) => `${arg.name}: ${arg.value}`).join(", ")
-          result += `(${argsString})`
-        }
-
-        if (field.fields && field.fields.length > 0) {
-          result += " {\n"
-          result += buildFields(field.fields, indent + "  ")
-          result += `${indent}}`
-        }
-
-        result += "\n"
-      }
-      return result
-    }
-
-    query += buildFields(operation.fields)
-    query += "}"
-
-    if (i < structure.operations.length - 1) {
-      query += "\n\n"
-    }
-
-    fullQuery += query
-  }
-
-  console.log("[v0] graphql-store: Built query:", fullQuery)
-  return fullQuery
 }
 
 export const graphqlStore = createGraphQLStore()

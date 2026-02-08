@@ -1,71 +1,67 @@
 <script>
   import { graphqlStore } from '../stores/graphql-store.js';
 
-  console.log('[v0] VariablesEditor.svelte: Initializing variables editor component');
 
   let variables = $state('{}');
   let isValidJson = $state(true);
   let parsedVariables = $state({});
+  let jsonError = $state('');
 
   const unsubscribe = graphqlStore.subscribe(state => {
-    console.log('[v0] VariablesEditor: Store state updated:', state);
     variables = state.variables;
     validateAndParseJson();
   });
 
   function handleVariablesChange(event) {
     const newVariables = event.target.value;
-    console.log('[v0] VariablesEditor: Variables changed:', newVariables);
     variables = newVariables;
     validateAndParseJson();
     graphqlStore.updateVariables(newVariables);
   }
 
   function validateAndParseJson() {
-    console.log('[v0] VariablesEditor: Validating JSON:', variables);
     try {
       parsedVariables = JSON.parse(variables);
       isValidJson = true;
-      console.log('[v0] VariablesEditor: Valid JSON parsed:', parsedVariables);
+      jsonError = '';
     } catch (error) {
       isValidJson = false;
-      console.log('[v0] VariablesEditor: Invalid JSON:', error.message);
+      jsonError = error.message;
     }
   }
 
   function formatJson() {
-    console.log('[v0] VariablesEditor: Formatting JSON');
     try {
       const parsed = JSON.parse(variables);
       const formatted = JSON.stringify(parsed, null, 2);
-      console.log('[v0] VariablesEditor: Formatted JSON:', formatted);
       graphqlStore.updateVariables(formatted);
+      jsonError = '';
     } catch (error) {
-      console.error('[v0] VariablesEditor: JSON formatting error:', error);
+      jsonError = error.message;
     }
   }
 
   function addVariable(name, value) {
-    console.log('[v0] VariablesEditor: Adding variable:', name, value);
     try {
       const current = JSON.parse(variables);
       current[name] = value;
       const updated = JSON.stringify(current, null, 2);
       graphqlStore.updateVariables(updated);
+      jsonError = '';
     } catch (error) {
-      console.error('[v0] VariablesEditor: Error adding variable:', error);
+      jsonError = error.message;
     }
   }
 
   function removeVariable(name) {
-    console.log('[v0] VariablesEditor: Removing variable:', name);
     try {
       const current = JSON.parse(variables);
       delete current[name];
       const updated = JSON.stringify(current, null, 2);
       graphqlStore.updateVariables(updated);
+      jsonError = '';
     } catch (error) {
-      console.error('[v0] VariablesEditor: Error removing variable:', error);
+      jsonError = error.message;
     }
   }
 
@@ -98,7 +94,7 @@
         valueEl.value = '';
       }
     } catch (error) {
-      console.error('[v0] VariablesEditor: Error parsing new variable value:', error);
+      jsonError = error.message;
     }
   }
 </script>
@@ -134,6 +130,9 @@
           class="w-full h-full p-4 font-mono text-sm resize-none border-none outline-none"
         ></textarea>
       </div>
+      {#if !isValidJson && jsonError}
+        <p class="mt-2 text-xs text-red-600">JSON error: {jsonError}</p>
+      {/if}
     </div>
 
     <div class="flex-1 flex flex-col">
