@@ -3,7 +3,6 @@
   import { graphqlStore } from '../stores/graphql-store.js';
   import FieldRenderer from './FieldRenderer.svelte'; // Import the FieldRenderer component
 
-  console.log('[v0] SchemaExplorer.svelte: Initializing schema explorer with infinite nesting support');
 
   let searchTerm = $state('');
   let selectedType = $state(null);
@@ -13,7 +12,6 @@
   let selectedFields = $state(new Map()); // Tracks which fields are selected at each level
 
   graphqlStore.subscribe(state => {
-    console.log('[v0] SchemaExplorer: Store state updated:', state);
     storeState = state;
   });
 
@@ -31,19 +29,16 @@
   });
 
   async function loadSchema() {
-    console.log('[v0] SchemaExplorer: Loading schema via introspection');
     await graphqlStore.introspectSchema();
   }
 
   function selectType(type) {
-    console.log('[v0] SchemaExplorer: Selecting type:', type);
     selectedType = type;
     nestedFieldState.clear();
     selectedFields.clear();
   }
 
   function toggleFieldExpansion(fieldPath, field) {
-    console.log('[v0] SchemaExplorer: Toggling field expansion for path:', fieldPath);
     const currentState = nestedFieldState.get(fieldPath) || { expanded: false, fields: [] };
     
     if (!currentState.expanded) {
@@ -53,7 +48,6 @@
       
       if (typeDefinition && typeDefinition.fields) {
         currentState.fields = typeDefinition.fields;
-        console.log('[v0] SchemaExplorer: Loaded sub-fields for', fieldPath, ':', typeDefinition.fields.length);
       }
     }
     
@@ -63,7 +57,6 @@
   }
 
   function toggleFieldSelection(fieldPath, field) {
-    console.log('[v0] SchemaExplorer: Toggling field selection for path:', fieldPath);
     const isSelected = selectedFields.get(fieldPath) || false;
     selectedFields.set(fieldPath, !isSelected);
     selectedFields = new Map(selectedFields); // Trigger reactivity
@@ -86,7 +79,6 @@
   }
 
   function updateQueryFromSelection() {
-    console.log('[v0] SchemaExplorer: Building query from nested selections');
     
     if (!selectedType) return;
     
@@ -139,7 +131,6 @@
         fields: rootFields
       };
       
-      console.log('[v0] SchemaExplorer: Generated nested query structure:', newStructure);
       graphqlStore.updateQueryStructure(newStructure);
     }
   }
@@ -168,7 +159,6 @@
   }
 
   function generateQueryFromType(type) {
-    console.log('[v0] SchemaExplorer: Generating query from type:', type.name);
     
     if (!type.fields) return;
 
@@ -188,13 +178,11 @@
       }]
     };
 
-    console.log('[v0] SchemaExplorer: Generated query structure:', newStructure);
     graphqlStore.updateQueryStructure(newStructure);
   }
 
   function handleSearchChange(event) {
     searchTerm = event.target.value;
-    console.log('[v0] SchemaExplorer: Search term changed:', searchTerm);
   }
 </script>
 

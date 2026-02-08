@@ -1,7 +1,6 @@
 <script>
   import { graphqlStore } from '../stores/graphql-store.js';
 
-  console.log('[v0] ExampleQueries.svelte: Initializing example queries component');
 
   let showDropdown = $state(false);
 
@@ -141,7 +140,6 @@
   ];
 
   function loadExample(example) {
-    console.log('[v0] ExampleQueries: Loading example:', example.name);
     
     // Update the store with the example data
     graphqlStore.update(state => ({
@@ -157,7 +155,6 @@
 
   // Simple query parser (reused from store)
   function parseQuery(queryString) {
-    console.log('[v0] ExampleQueries: Parsing example query:', queryString);
     
     try {
       const operationMatch = queryString.match(/(query|mutation|subscription)\s+(\w+)?\s*($$[^)]*$$)?\s*{/);
@@ -171,7 +168,6 @@
         fields: []
       };
     } catch (error) {
-      console.error('[v0] ExampleQueries: Query parsing error:', error);
       return {
         operation: 'query',
         name: 'ParseError',
@@ -182,7 +178,6 @@
   }
 
   function toggleDropdown() {
-    console.log('[v0] ExampleQueries: Toggling dropdown:', !showDropdown);
     showDropdown = !showDropdown;
   }
 

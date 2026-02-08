@@ -1,7 +1,6 @@
 <script>
   import { graphqlStore } from '../stores/graphql-store.js';
 
-  console.log('[v0] QueryEditor.svelte: Initializing query editor component');
 
   let query = $state('');
   let isExecuting = $state(false);
@@ -9,7 +8,6 @@
   // Subscribe to store changes
   $effect(() => {
     const unsubscribe = graphqlStore.subscribe(state => {
-      console.log('[v0] QueryEditor: Store state updated:', state);
       query = state.query;
       isExecuting = state.loading;
     });
@@ -18,18 +16,15 @@
 
   function handleQueryChange(event) {
     const newQuery = event.target.value;
-    console.log('[v0] QueryEditor: Query changed:', newQuery);
     query = newQuery;
     graphqlStore.updateQuery(newQuery);
   }
 
   async function executeQuery() {
-    console.log('[v0] QueryEditor: Executing query button clicked');
     await graphqlStore.executeQuery();
   }
 
   function formatQuery() {
-    console.log('[v0] QueryEditor: Formatting query');
     // Simple formatting - add proper indentation
     const formatted = query
       .replace(/{\s*/g, '{\n  ')
@@ -37,20 +32,29 @@
       .replace(/,\s*/g, ',\n  ')
       .replace(/\n\s*\n/g, '\n');
     
-    console.log('[v0] QueryEditor: Formatted query:', formatted);
     graphqlStore.updateQuery(formatted);
+  }
+
+  function resetQuery() {
+    graphqlStore.resetDefaults();
   }
 </script>
 
 <div class="h-full flex flex-col">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-gray-900">GraphQL Query Editor</h2>
-    <div class="flex space-x-2">
+    <div class="flex flex-wrap gap-2">
       <button
         onclick={formatQuery}
         class="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
       >
         Format
+      </button>
+      <button
+        onclick={resetQuery}
+        class="px-3 py-1 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"
+      >
+        Reset
       </button>
       <button
         onclick={executeQuery}

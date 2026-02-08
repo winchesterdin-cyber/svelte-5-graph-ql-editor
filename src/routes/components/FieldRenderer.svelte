@@ -13,11 +13,9 @@
     onExpandToggle 
   } = $props();
 
-  console.log('[v0] FieldRenderer props:', { field, typeName, depth });
 
   // Get the base type (unwrap NonNull and List wrappers)
   function getBaseType(type) {
-    console.log('[v0] Getting base type for:', type);
     if (!type) return null;
     
     if (type.kind === 'NON_NULL' || type.kind === 'LIST') {
@@ -30,18 +28,14 @@
   function isExpandableType(type) {
     const baseType = getBaseType(type);
     const result = baseType && baseType.kind === 'OBJECT';
-    console.log('[v0] Is expandable type:', baseType?.name, result);
     return result;
   }
 
   // Get fields for a type from schema
   function getFieldsForType(typeName) {
-    console.log('[v0] Getting fields for type:', typeName);
-    const storeValue = graphqlStore.get();
+    const storeValue = graphqlStore.getState();
     const type = storeValue.schema?.types?.find(t => t.name === typeName);
-    const fields = type?.fields || [];
-    console.log('[v0] Found fields:', fields.length);
-    return fields;
+    return type?.fields || [];
   }
 
   // Format field type for display
@@ -59,19 +53,16 @@
 
   // Handle field selection toggle
   function handleFieldToggle() {
-    console.log('[v0] Field toggle:', field.name);
     onFieldToggle?.(field.name);
   }
 
   // Handle expand/collapse toggle
   function handleExpandToggle() {
-    console.log('[v0] Expand toggle:', field.name);
     onExpandToggle?.(field.name);
   }
 
   // Handle arguments expand/collapse
   function handleArgumentsToggle() {
-    console.log('[v0] Arguments toggle:', field.name);
     onExpandToggle?.(`${field.name}:args`);
   }
 
@@ -94,18 +85,6 @@
   const shouldShowExpander = $derived(canExpand || hasArguments);
   const hasAnyExpanded = $derived(isExpanded || argumentsExpanded);
 
-  $effect(() => {
-    console.log('[v0] FieldRenderer state:', { 
-      fieldName: field.name, 
-      isSelected, 
-      isExpanded, 
-      canExpand, 
-      hasArguments,
-      argumentsExpanded,
-      subFieldsCount: subFields.length,
-      depth 
-    });
-  });
 </script>
 
 <div class="relative">
@@ -115,10 +94,16 @@
     <div class="absolute left-0 top-6 bottom-0 w-0 border-l-2 border-gray-200"></div>
   {/if}
 
-  <div class="field-item flex items-start gap-2 py-1 pl-{depth * 6} relative">
+  <div
+    class="field-item flex items-start gap-2 py-1 relative"
+    style={`padding-left: ${depth * 1.5}rem;`}
+  >
     <!-- Tree connector -->
     {#if depth > 0}
-      <div class="absolute left-{(depth - 1) * 6 + 2} top-0 w-4 h-6 border-l-2 border-gray-200"></div>
+      <div
+        class="absolute top-0 w-4 h-6 border-l-2 border-gray-200"
+        style={`left: ${(depth - 1) * 1.5 + 0.5}rem;`}
+      ></div>
     {/if}
 
     <!-- Expand/Collapse Button -->
@@ -176,7 +161,7 @@
 
   <!-- Arguments Section -->
   {#if hasArguments && (isExpanded || argumentsExpanded)}
-    <div class="ml-{(depth + 1) * 6} relative">
+    <div class="relative" style={`margin-left: ${(depth + 1) * 1.5}rem;`}>
       <!-- Arguments Header -->
       <div class="flex items-center gap-2 py-1 text-sm text-gray-700">
         <button
@@ -215,7 +200,7 @@
 
   <!-- Recursive nested fields -->
   {#if canExpand && isExpanded && subFields.length > 0}
-    <div class="ml-{(depth + 1) * 6} relative">
+    <div class="relative" style={`margin-left: ${(depth + 1) * 1.5}rem;`}>
       <!-- Sub-fields Header -->
       <div class="flex items-center gap-2 py-1 text-sm text-green-700">
         <div class="w-4 h-4 flex items-center justify-center">
@@ -252,24 +237,4 @@
     border-radius: 4px;
   }
 
-  /* Dynamic padding classes */
-  .pl-0 { padding-left: 0; }
-  .pl-6 { padding-left: 1.5rem; }
-  .pl-12 { padding-left: 3rem; }
-  .pl-18 { padding-left: 4.5rem; }
-  .pl-24 { padding-left: 6rem; }
-  .pl-30 { padding-left: 7.5rem; }
-  
-  .ml-0 { margin-left: 0; }
-  .ml-6 { margin-left: 1.5rem; }
-  .ml-12 { margin-left: 3rem; }
-  .ml-18 { margin-left: 4.5rem; }
-  .ml-24 { margin-left: 6rem; }
-  .ml-30 { margin-left: 7.5rem; }
-  
-  .left-2 { left: 0.5rem; }
-  .left-8 { left: 2rem; }
-  .left-14 { left: 3.5rem; }
-  .left-20 { left: 5rem; }
-  .left-26 { left: 6.5rem; }
 </style>

@@ -1,7 +1,6 @@
 <script>
   import { graphqlStore } from '../stores/graphql-store.js';
 
-  console.log('[v0] VisualBuilder.svelte: Initializing enhanced visual builder component');
 
   let { darkMode = false } = $props();
 
@@ -19,15 +18,12 @@
   let searchTerm = $state('');
 
   $effect(() => {
-    console.log('[v0] VisualBuilder: Setting up store subscription');
     const unsubscribe = graphqlStore.subscribe(state => {
-      console.log('[v0] VisualBuilder: Store state updated:', state);
       
       // Update current operation from queryStructure when text editor changes
       if (state.queryStructure && state.queryStructure.operations.length > 0) {
         const activeOp = state.queryStructure.operations[state.queryStructure.activeOperationIndex];
         if (activeOp && (!currentOperation || JSON.stringify(currentOperation) !== JSON.stringify(activeOp))) {
-          console.log('[v0] VisualBuilder: Syncing with text editor changes:', activeOp);
           currentOperation = { ...activeOp };
         }
       }
@@ -42,12 +38,10 @@
   });
 
   function updateCurrentOperation() {
-    console.log('[v0] VisualBuilder: Updating current operation:', currentOperation);
     graphqlStore.updateCurrentOperation(currentOperation);
     
     // Rebuild query text from visual structure
     const queryText = buildQueryFromStructure(currentOperation);
-    console.log('[v0] VisualBuilder: Built query text from visual structure:', queryText);
     graphqlStore.updateQuery(queryText);
   }
 
@@ -101,11 +95,9 @@
   }
 
   function addField(parentFields = currentOperation?.fields || [], typeName = 'Query', fieldPath = []) {
-    console.log('[v0] VisualBuilder: Adding new field for type:', typeName, 'at path:', fieldPath);
     
     if (currentSchema) {
       const availableFields = graphqlStore.getValidFieldsForType(typeName);
-      console.log('[v0] VisualBuilder: Available valid fields for type', typeName, ':', availableFields);
       if (availableFields.length > 0) {
         currentFieldContext = { parentFields, typeName, fieldPath };
         showFieldSelector = true;
@@ -117,18 +109,13 @@
     if (!currentSchema) {
       parentFields.push(createNewField());
       updateCurrentOperation();
-    } else {
-      console.warn('[v0] VisualBuilder: Cannot add field - not supported by schema');
     }
   }
 
   function addFieldFromSchema(field, parentFields) {
-    console.log('[v0] VisualBuilder: Adding field from schema:', field.name);
-    
     // Validate field is supported
     const typeName = currentFieldContext?.typeName || 'Query';
     if (!graphqlStore.isValidField(typeName, field.name)) {
-      console.error('[v0] VisualBuilder: Field not supported by schema:', field.name);
       return;
     }
     
@@ -142,11 +129,9 @@
   }
 
   function addArgument(field, parentTypeName = 'Query') {
-    console.log('[v0] VisualBuilder: Adding argument to field:', field.name, 'on type:', parentTypeName);
     
     if (currentSchema) {
       const availableArgs = graphqlStore.getValidArgsForField(parentTypeName, field.name);
-      console.log('[v0] VisualBuilder: Available valid args for field', field.name, 'on type', parentTypeName, ':', availableArgs);
       if (availableArgs.length > 0) {
         currentFieldContext = { field, parentTypeName };
         showArgSelector = true;
@@ -158,18 +143,14 @@
     if (!currentSchema) {
       field.args.push(createNewArgument());
       updateCurrentOperation();
-    } else {
-      console.warn('[v0] VisualBuilder: Cannot add argument - not supported by schema');
     }
   }
 
   function addArgumentFromSchema(arg, field) {
-    console.log('[v0] VisualBuilder: Adding argument from schema:', arg.name);
     
     // Validate argument is supported
     const typeName = currentFieldContext?.parentTypeName || 'Query';
     if (!graphqlStore.isValidArgument(typeName, field.name, arg.name)) {
-      console.error('[v0] VisualBuilder: Argument not supported by schema:', arg.name);
       return;
     }
     
@@ -180,17 +161,14 @@
   }
 
   function addOperation(type = 'query') {
-    console.log('[v0] VisualBuilder: Adding new operation:', type);
     graphqlStore.addOperation(type);
   }
 
   function removeOperation(index) {
-    console.log('[v0] VisualBuilder: Removing operation:', index);
     graphqlStore.removeOperation(index);
   }
 
   function setActiveOperation(index) {
-    console.log('[v0] VisualBuilder: Setting active operation:', index);
     graphqlStore.setActiveOperation(index);
   }
 
@@ -220,13 +198,11 @@
   }
 
   function removeField(parentFields, index) {
-    console.log('[v0] VisualBuilder: Removing field at index:', index);
     parentFields.splice(index, 1);
     updateCurrentOperation();
   }
 
   function removeArgument(field, argIndex) {
-    console.log('[v0] VisualBuilder: Removing argument:', argIndex);
     field.args.splice(argIndex, 1);
     updateCurrentOperation();
   }
@@ -237,12 +213,10 @@
   }
 
   function selectSchema(schemaKey) {
-    console.log('[v0] VisualBuilder: Selecting schema:', schemaKey);
     graphqlStore.loadDemoSchema(schemaKey);
   }
 
   function duplicateField(field, parentFields) {
-    console.log('[v0] VisualBuilder: Duplicating field:', field.name);
     const duplicated = JSON.parse(JSON.stringify(field));
     duplicated.name = `${field.name}Copy`;
     parentFields.push(duplicated);
@@ -250,14 +224,12 @@
   }
 
   function moveField(fromIndex, toIndex, parentFields) {
-    console.log('[v0] VisualBuilder: Moving field from', fromIndex, 'to', toIndex);
     const [movedField] = parentFields.splice(fromIndex, 1);
     parentFields.splice(toIndex, 0, movedField);
     updateCurrentOperation();
   }
 
   function bulkRemoveFields() {
-    console.log('[v0] VisualBuilder: Bulk removing selected fields');
     // Implementation for bulk operations
     selectedFields = new Set();
     updateCurrentOperation();
