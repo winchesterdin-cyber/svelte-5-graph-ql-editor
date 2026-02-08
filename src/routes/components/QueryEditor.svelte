@@ -4,12 +4,14 @@
 
   let query = $state('');
   let isExecuting = $state(false);
+  let requestTimeoutMs = $state(15000);
 
   // Subscribe to store changes
   $effect(() => {
     const unsubscribe = graphqlStore.subscribe(state => {
       query = state.query;
       isExecuting = state.loading;
+      requestTimeoutMs = state.requestTimeoutMs ?? 0;
     });
     return unsubscribe;
   });
@@ -22,6 +24,10 @@
 
   async function executeQuery() {
     await graphqlStore.executeQuery();
+  }
+
+  function cancelQuery() {
+    graphqlStore.cancelActiveRequest();
   }
 
   function formatQuery() {
@@ -38,12 +44,30 @@
   function resetQuery() {
     graphqlStore.resetDefaults();
   }
+
+  function handleTimeoutChange(event) {
+    const rawValue = event.target.value;
+    const parsed = rawValue === '' ? 0 : Number(rawValue);
+    if (Number.isNaN(parsed) || parsed < 0) return;
+    graphqlStore.setRequestTimeoutMs(parsed);
+  }
 </script>
 
 <div class="h-full flex flex-col">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-gray-900">GraphQL Query Editor</h2>
     <div class="flex flex-wrap gap-2">
+      <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2 py-1">
+        <label class="text-xs text-gray-600">Timeout (ms)</label>
+        <input
+          type="number"
+          min="0"
+          step="500"
+          value={requestTimeoutMs}
+          oninput={handleTimeoutChange}
+          class="w-24 px-2 py-1 text-xs border border-gray-200 rounded"
+        />
+      </div>
       <button
         onclick={formatQuery}
         class="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
@@ -63,6 +87,14 @@
       >
         {isExecuting ? 'Executing...' : 'Execute Query'}
       </button>
+      {#if isExecuting}
+        <button
+          onclick={cancelQuery}
+          class="px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+        >
+          Cancel
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -82,6 +114,7 @@
       <li>Click "Format" to auto-indent your query</li>
       <li>Switch to "Visual Builder" tab to build queries visually</li>
       <li>Check the "Variables" tab to define query variables</li>
+      <li>Set timeout to 0 to disable request timeouts</li>
     </ul>
   </div>
 </div>

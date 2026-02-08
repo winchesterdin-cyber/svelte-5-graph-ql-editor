@@ -1,5 +1,6 @@
 import { writable } from "svelte/store"
 import { buildQueryFromStructure, parseQuery } from "./graphql-helpers.js"
+import { LEVELS, logEvent } from "./logger.js"
 
 
 // Create reactive store for GraphQL state
@@ -487,6 +488,10 @@ const DEMO_SCHEMAS = {
 
 function createGraphQLStore() {
   const HISTORY_LIMIT = 50
+  const LOG_LIMIT = 200
+  const DEFAULT_TIMEOUT_MS = 15000
+  let activeController = null
+  let activeTimeoutId = null
   const initialState = {
     endpoint: "https://countries.trevorblades.com/",
     query: DEFAULT_QUERY,
@@ -497,6 +502,8 @@ function createGraphQLStore() {
     error: null,
     history: [],
     lastExecution: null,
+    requestTimeoutMs: DEFAULT_TIMEOUT_MS,
+    logs: [],
     queryStructure: {
       operations: [
         {
@@ -528,6 +535,34 @@ function createGraphQLStore() {
     error: entry.error,
     pinned: Boolean(entry.pinned),
   })
+
+  const addHistoryEntry = (entry) => {
+    update((state) => ({
+      ...state,
+      history: [normalizeHistoryEntry(entry), ...state.history].slice(0, HISTORY_LIMIT),
+    }))
+  }
+
+  /**
+   * Persist a structured log entry in the store and emit it to the console.
+   * Keeps the most recent LOG_LIMIT entries to avoid unbounded growth.
+   */
+  const recordLog = (level, message, context = {}) => {
+    const entry = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+      context,
+    }
+
+    logEvent(level, message, context)
+
+    update((state) => ({
+      ...state,
+      logs: [...(state.logs ?? []), entry].slice(-LOG_LIMIT),
+    }))
+  }
 
   return {
     subscribe,
@@ -675,6 +710,7 @@ function createGraphQLStore() {
     loadDemoSchema: (schemaKey = "blog") => {
       const selectedSchema = DEMO_SCHEMAS[schemaKey]
       if (selectedSchema) {
+        recordLog(LEVELS.INFO, "Loaded demo schema", { schemaKey })
         update((state) => ({
           ...state,
           schema: selectedSchema.schema,
@@ -796,23 +832,37 @@ function createGraphQLStore() {
       update((state) => ({ ...state, variables: newVariables }))
     },
 
-    addHistoryEntry: (entry) => {
-      update((state) => ({
-        ...state,
-        history: [normalizeHistoryEntry(entry), ...state.history].slice(0, HISTORY_LIMIT),
-      }))
+    setRequestTimeoutMs: (timeoutMs) => {
+      const normalizedTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.round(timeoutMs) : 0
+      recordLog(LEVELS.INFO, "Updated request timeout", { timeoutMs: normalizedTimeout })
+      update((state) => ({ ...state, requestTimeoutMs: normalizedTimeout }))
     },
 
+    cancelActiveRequest: () => {
+      if (!activeController) {
+        recordLog(LEVELS.WARN, "Cancel requested with no active request")
+        return
+      }
+      activeController.abort("user-cancelled")
+      recordLog(LEVELS.WARN, "User cancelled active request")
+    },
+
+    addHistoryEntry,
+
     clearHistory: () => {
+      recordLog(LEVELS.INFO, "Cleared query history")
       update((state) => ({ ...state, history: [] }))
     },
 
     importHistory: (entries = []) => {
+      recordLog(LEVELS.INFO, "Imported query history entries", { count: entries.length })
       update((state) => {
         const normalized = entries.map(normalizeHistoryEntry)
         const existing = state.history ?? []
         const merged = [...normalized, ...existing]
-        const deduped = Array.from(new Map(merged.map((entry) => [entry.id, entry])).values())
+        const deduped = Array.from(
+          new Map([...merged].reverse().map((entry) => [entry.id, entry])).values(),
+        ).reverse()
         return { ...state, history: deduped.slice(0, HISTORY_LIMIT) }
       })
     },
@@ -834,6 +884,7 @@ function createGraphQLStore() {
     },
 
     clearUnpinnedHistory: () => {
+      recordLog(LEVELS.INFO, "Cleared unpinned history entries")
       update((state) => ({
         ...state,
         history: state.history.filter((entry) => entry.pinned),
@@ -841,6 +892,7 @@ function createGraphQLStore() {
     },
 
     clearResults: () => {
+      recordLog(LEVELS.INFO, "Cleared results panel")
       update((state) => ({
         ...state,
         results: null,
@@ -851,6 +903,7 @@ function createGraphQLStore() {
     },
 
     loadHistoryEntry: (entry) => {
+      recordLog(LEVELS.INFO, "Loaded history entry into editor", { entryId: entry?.id })
       update((state) => ({
         ...state,
         query: entry.query,
@@ -875,6 +928,15 @@ function createGraphQLStore() {
       }))
     },
 
+    clearLogs: () => {
+      recordLog(LEVELS.INFO, "Cleared activity logs")
+      update((state) => ({ ...state, logs: [] }))
+    },
+
+    /**
+     * Execute the GraphQL request while handling abort + timeout.
+     * Timeout is applied via AbortController to ensure fetch is cancelled.
+     */
     executeQuery: async () => {
       update((state) => ({ ...state, loading: true, error: null }))
 
@@ -884,6 +946,7 @@ function createGraphQLStore() {
 
       try {
         if (!currentState.endpoint) {
+          recordLog(LEVELS.WARN, "Execution blocked: missing endpoint", { entryId })
           update((state) => ({
             ...state,
             error: "Endpoint is required before executing a query.",
@@ -898,7 +961,7 @@ function createGraphQLStore() {
               error: "Endpoint is required before executing a query.",
             },
           }))
-          store.addHistoryEntry({
+          addHistoryEntry({
             id: entryId,
             timestamp: new Date().toISOString(),
             endpoint: currentState.endpoint,
@@ -915,6 +978,10 @@ function createGraphQLStore() {
         try {
           variables = currentState.variables ? JSON.parse(currentState.variables) : {}
         } catch (parseError) {
+          recordLog(LEVELS.WARN, "Execution blocked: invalid variables JSON", {
+            entryId,
+            error: parseError.message,
+          })
           update((state) => ({
             ...state,
             error: `Variables JSON error: ${parseError.message}`,
@@ -929,7 +996,7 @@ function createGraphQLStore() {
               error: `Variables JSON error: ${parseError.message}`,
             },
           }))
-          store.addHistoryEntry({
+          addHistoryEntry({
             id: entryId,
             timestamp: new Date().toISOString(),
             endpoint: currentState.endpoint,
@@ -942,6 +1009,29 @@ function createGraphQLStore() {
           return
         }
 
+        if (activeController) {
+          activeController.abort("superseded")
+          activeController = null
+          if (activeTimeoutId) {
+            clearTimeout(activeTimeoutId)
+            activeTimeoutId = null
+          }
+        }
+
+        activeController = new AbortController()
+        const timeoutMs = currentState.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS
+        if (timeoutMs > 0) {
+          activeTimeoutId = setTimeout(() => {
+            activeController?.abort("timeout")
+          }, timeoutMs)
+        }
+
+        recordLog(LEVELS.INFO, "Executing GraphQL request", {
+          entryId,
+          endpoint: currentState.endpoint,
+          timeoutMs,
+          hasVariables: Object.keys(variables).length > 0,
+        })
 
         const response = await fetch(currentState.endpoint, {
           method: "POST",
@@ -952,6 +1042,7 @@ function createGraphQLStore() {
             query: currentState.query,
             variables: variables,
           }),
+          signal: activeController.signal,
         })
 
         const result = await response.json()
@@ -975,7 +1066,14 @@ function createGraphQLStore() {
           },
         }))
 
-        store.addHistoryEntry({
+        recordLog(LEVELS.INFO, "GraphQL request completed", {
+          entryId,
+          status: result.errors ? "error" : "success",
+          statusCode: response.status,
+          durationMs: Date.now() - startedAt,
+        })
+
+        addHistoryEntry({
           id: entryId,
           timestamp: new Date().toISOString(),
           endpoint: currentState.endpoint,
@@ -988,6 +1086,51 @@ function createGraphQLStore() {
           error: errorMessages,
         })
       } catch (error) {
+        const wasAborted = activeController?.signal?.aborted
+        const abortReason = activeController?.signal?.reason
+        const isTimeout = abortReason === "timeout"
+        if (wasAborted) {
+          const cancelMessage = isTimeout
+            ? `Request timed out after ${currentState.requestTimeoutMs}ms.`
+            : "Request cancelled."
+          recordLog(LEVELS.WARN, "GraphQL request cancelled", {
+            entryId,
+            reason: abortReason ?? "aborted",
+            durationMs: Date.now() - startedAt,
+          })
+          update((state) => ({
+            ...state,
+            error: null,
+            loading: false,
+            results: null,
+            lastExecution: {
+              id: entryId,
+              status: "cancelled",
+              durationMs: Date.now() - startedAt,
+              endpoint: currentState.endpoint,
+              timestamp: new Date().toISOString(),
+              error: cancelMessage,
+            },
+          }))
+
+          addHistoryEntry({
+            id: entryId,
+            timestamp: new Date().toISOString(),
+            endpoint: currentState.endpoint,
+            query: currentState.query,
+            variables: currentState.variables,
+            status: "cancelled",
+            durationMs: Date.now() - startedAt,
+            error: cancelMessage,
+          })
+          return
+        }
+
+        recordLog(LEVELS.ERROR, "GraphQL request failed", {
+          entryId,
+          error: error.message,
+          durationMs: Date.now() - startedAt,
+        })
         update((state) => ({
           ...state,
           error: error.message,
@@ -1003,7 +1146,7 @@ function createGraphQLStore() {
           },
         }))
 
-        store.addHistoryEntry({
+        addHistoryEntry({
           id: entryId,
           timestamp: new Date().toISOString(),
           endpoint: currentState.endpoint,
@@ -1013,6 +1156,12 @@ function createGraphQLStore() {
           durationMs: Date.now() - startedAt,
           error: error.message,
         })
+      } finally {
+        if (activeTimeoutId) {
+          clearTimeout(activeTimeoutId)
+          activeTimeoutId = null
+        }
+        activeController = null
       }
     },
 
@@ -1061,6 +1210,9 @@ function createGraphQLStore() {
 
       try {
         const currentState = get(store)
+        recordLog(LEVELS.INFO, "Running schema introspection", {
+          endpoint: currentState.endpoint,
+        })
         const response = await fetch(currentState.endpoint, {
           method: "POST",
           headers: {
@@ -1071,12 +1223,20 @@ function createGraphQLStore() {
 
         const result = await response.json()
 
+        recordLog(LEVELS.INFO, "Schema introspection completed", {
+          endpoint: currentState.endpoint,
+          typesCount: result.data?.__schema?.types?.length ?? 0,
+        })
         update((state) => ({
           ...state,
           schema: result.data.__schema,
           loading: false,
         }))
       } catch (error) {
+        recordLog(LEVELS.ERROR, "Schema introspection failed", {
+          endpoint: get(store).endpoint,
+          error: error.message,
+        })
         update((state) => ({
           ...state,
           error: error.message,

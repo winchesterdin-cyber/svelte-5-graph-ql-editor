@@ -6,6 +6,8 @@ import { graphqlStore } from "./graphql-store.js"
 
 const originalFetch = globalThis.fetch
 const originalCrypto = globalThis.crypto
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto")
+const canOverrideCrypto = !originalCryptoDescriptor || originalCryptoDescriptor.configurable
 
 const resetStore = () => {
   graphqlStore.resetDefaults()
@@ -19,15 +21,26 @@ const resetStore = () => {
 }
 
 test.beforeEach(() => {
-  globalThis.crypto = {
-    randomUUID: () => "test-uuid",
+  if (canOverrideCrypto) {
+    Object.defineProperty(globalThis, "crypto", {
+      value: {
+        randomUUID: () => "test-uuid",
+      },
+      configurable: true,
+    })
   }
   resetStore()
 })
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch
-  globalThis.crypto = originalCrypto
+  if (canOverrideCrypto) {
+    if (originalCryptoDescriptor) {
+      Object.defineProperty(globalThis, "crypto", originalCryptoDescriptor)
+    } else {
+      globalThis.crypto = originalCrypto
+    }
+  }
 })
 
 test("parses query operations with variables and fields", () => {
