@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { graphqlStore } from '../stores/graphql-store.js';
   import SavedPresets from './SavedPresets.svelte';
+  import { LEVELS } from '../stores/logger.js';
 
   let query = $state('');
   let endpoint = $state('');
@@ -9,6 +10,9 @@
   let draft = $state(null);
   let isExecuting = $state(false);
   let requestTimeoutMs = $state(15000);
+  let retryMax = $state(0);
+  let retryDelayMs = $state(1000);
+  let copyStatus = $state('');
 
   // Subscribe to store changes
   $effect(() => {
@@ -19,6 +23,8 @@
       draft = state.draft;
       isExecuting = state.loading;
       requestTimeoutMs = state.requestTimeoutMs ?? 0;
+      retryMax = state.retryPolicy?.maxRetries ?? 0;
+      retryDelayMs = state.retryPolicy?.retryDelayMs ?? 1000;
     });
     return unsubscribe;
   });
@@ -72,6 +78,20 @@
     graphqlStore.setRequestTimeoutMs(parsed);
   }
 
+  function handleRetryChange(event) {
+    const rawValue = event.target.value;
+    const parsed = rawValue === '' ? 0 : Number(rawValue);
+    if (Number.isNaN(parsed) || parsed < 0) return;
+    graphqlStore.setRetryPolicy({ maxRetries: parsed, retryDelayMs });
+  }
+
+  function handleRetryDelayChange(event) {
+    const rawValue = event.target.value;
+    const parsed = rawValue === '' ? 0 : Number(rawValue);
+    if (Number.isNaN(parsed) || parsed < 0) return;
+    graphqlStore.setRetryPolicy({ maxRetries: retryMax, retryDelayMs: parsed });
+  }
+
   function restoreDraft() {
     graphqlStore.applyDraft();
   }
@@ -84,15 +104,89 @@
     if (!timestamp) return 'unknown time';
     return new Date(timestamp).toLocaleString();
   }
+
+  /**
+   * Build a curl command to reproduce the current query execution.
+   * This helps users debug outside the UI or share a request quickly.
+   */
+  function buildCurlCommand() {
+    if (!endpoint) return null;
+    let parsedVariables = null;
+    if (variables?.trim()) {
+      parsedVariables = JSON.parse(variables);
+    }
+
+    const payload = JSON.stringify({
+      query,
+      variables: parsedVariables ?? undefined
+    });
+
+    return [
+      "curl",
+      "-X",
+      "POST",
+      `'${endpoint}'`,
+      "-H",
+      "'Content-Type: application/json'",
+      "-d",
+      `'${payload.replace(/'/g, "'\\''")}'`
+    ].join(' ');
+  }
+
+  async function copyCurlCommand() {
+    copyStatus = '';
+    if (!endpoint) {
+      copyStatus = 'Set an endpoint to generate a cURL command.';
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Missing endpoint for cURL copy');
+      return;
+    }
+
+    let command;
+    try {
+      command = buildCurlCommand();
+    } catch (error) {
+      copyStatus = `Variables JSON error: ${error.message}`;
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Invalid variables for cURL copy', {
+        error: error.message
+      });
+      return;
+    }
+
+    if (!command) {
+      copyStatus = 'Unable to generate cURL command.';
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Failed to generate cURL command');
+      return;
+    }
+
+    try {
+      await navigator.clipboard?.writeText(command);
+      copyStatus = 'cURL command copied to clipboard.';
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied cURL command');
+    } catch (error) {
+      copyStatus = 'Clipboard copy failed. Try again or copy manually.';
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Clipboard copy failed', {
+        error: error.message
+      });
+    }
+  }
+
+  // Surface retry behavior so users understand slow/unstable network handling.
+  const retrySummary = $derived(() => {
+    if (!isExecuting) return null;
+    const totalAttempts = retryMax + 1;
+    if (totalAttempts <= 1) return 'Running request...';
+    return `Attempting request (up to ${totalAttempts} tries).`;
+  });
 </script>
 
 <div class="h-full flex flex-col">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-gray-900">GraphQL Query Editor</h2>
     <div class="flex flex-wrap gap-2">
-      <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2 py-1">
-        <label class="text-xs text-gray-600">Timeout (ms)</label>
+      <div class="flex flex-wrap items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2 py-1">
+        <label for="request-timeout" class="text-xs text-gray-600">Timeout (ms)</label>
         <input
+          id="request-timeout"
           type="number"
           min="0"
           step="500"
@@ -100,12 +194,38 @@
           oninput={handleTimeoutChange}
           class="w-24 px-2 py-1 text-xs border border-gray-200 rounded"
         />
+        <label for="request-retries" class="text-xs text-gray-600">Retries</label>
+        <input
+          id="request-retries"
+          type="number"
+          min="0"
+          step="1"
+          value={retryMax}
+          oninput={handleRetryChange}
+          class="w-16 px-2 py-1 text-xs border border-gray-200 rounded"
+        />
+        <label for="retry-delay" class="text-xs text-gray-600">Delay (ms)</label>
+        <input
+          id="retry-delay"
+          type="number"
+          min="0"
+          step="250"
+          value={retryDelayMs}
+          oninput={handleRetryDelayChange}
+          class="w-20 px-2 py-1 text-xs border border-gray-200 rounded"
+        />
       </div>
       <button
         onclick={formatQuery}
         class="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
       >
         Format
+      </button>
+      <button
+        onclick={copyCurlCommand}
+        class="px-3 py-1 bg-purple-500 text-white rounded text-sm hover:bg-purple-600"
+      >
+        Copy cURL
       </button>
       <button
         onclick={resetQuery}
@@ -167,6 +287,18 @@
 
   <SavedPresets />
 
+  {#if retrySummary}
+    <div class="mt-3 text-xs text-gray-500">
+      {retrySummary}
+    </div>
+  {/if}
+
+  {#if copyStatus}
+    <div class="mt-2 text-xs text-gray-500">
+      {copyStatus}
+    </div>
+  {/if}
+
   <div class="mt-4 text-sm text-gray-600">
     <p>💡 <strong>Tips:</strong></p>
     <ul class="list-disc list-inside space-y-1 mt-2">
@@ -175,6 +307,7 @@
       <li>Switch to "Visual Builder" tab to build queries visually</li>
       <li>Check the "Variables" tab to define query variables</li>
       <li>Set timeout to 0 to disable request timeouts</li>
+      <li>Increase retries to auto-recover from transient network or server errors</li>
     </ul>
   </div>
 </div>

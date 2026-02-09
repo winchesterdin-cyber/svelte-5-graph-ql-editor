@@ -306,6 +306,7 @@ test("stores history entry for invalid variables", async () => {
 
 test("stores history entry for GraphQL errors", async () => {
   globalThis.fetch = async () => ({
+    ok: true,
     status: 200,
     statusText: "OK",
     json: async () => ({
@@ -342,6 +343,7 @@ test("clears results state", () => {
 
 test("stores lastExecution details for successful queries", async () => {
   globalThis.fetch = async () => ({
+    ok: true,
     status: 201,
     statusText: "Created",
     json: async () => ({
