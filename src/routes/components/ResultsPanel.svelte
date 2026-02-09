@@ -66,6 +66,15 @@
     return entries.filter(entry => entry.level === logLevelFilter);
   });
 
+  const loadingSummary = $derived(() => {
+    if (!storeState.loading) return null;
+    const retryAttempt = storeState.retryAttempt ?? 0;
+    const maxRetries = storeState.retryPolicy?.maxRetries ?? 0;
+    const maxAttempts = maxRetries + 1;
+    if (maxAttempts <= 1) return 'Executing query...';
+    return `Executing query (attempt ${retryAttempt + 1} of ${maxAttempts})...`;
+  });
+
   function copyResults() {
     if (storeState.results) {
       navigator.clipboard?.writeText(JSON.stringify(storeState.results, null, 2));
@@ -228,7 +237,7 @@
       <div class="h-full flex items-center justify-center">
         <div class="text-center">
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-          <p class="text-gray-600">Executing query...</p>
+          <p class="text-gray-600">{loadingSummary ?? 'Executing query...'}</p>
         </div>
       </div>
     {:else if storeState.error}

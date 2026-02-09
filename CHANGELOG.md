@@ -6,7 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added repository-level agent guidelines in `agents.md`.
 - Query editor reset action to restore the default query and variables.
+- Added a Copy cURL action in the Query Editor for sharing and debugging requests.
+- Added configurable retry controls (count + delay) with automatic retries for transient GraphQL request failures.
+- Added a UI logging hook to emit structured client-side events consistently.
 - Expanded GraphQL helper and store tests to cover nested parsing, history validation, and clear results logic.
 - Extracted GraphQL query helpers into a dedicated module to allow lightweight unit testing.
 - Added a minimal Tailwind configuration for tooling discovery.
@@ -25,6 +29,10 @@ All notable changes to this project will be documented in this file.
 
 - Switched Tailwind config to CommonJS for better compatibility with the Vite Tailwind plugin.
 - Pointed the Vite Tailwind plugin at the CommonJS config to avoid SSR build errors.
+- Updated Vite Tailwind plugin usage to match current plugin signatures.
+- Disabled JS type checking in svelte-check to focus diagnostics on TS/Svelte sources.
+- Migrated Tailwind processing to PostCSS to avoid Vite plugin SSR errors.
+- Kept Tailwind config in CommonJS for PostCSS compatibility.
 - Improved default query/variables handling in the GraphQL store to keep state consistent after resets.
 - Replaced dynamic Tailwind utility interpolation with inline styles in the schema field tree for reliable rendering.
 - Removed unused placeholder dependencies to prevent install failures.

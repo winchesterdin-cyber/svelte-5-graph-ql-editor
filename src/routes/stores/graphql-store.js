@@ -830,6 +830,8 @@ function createGraphQLStore() {
   const HISTORY_LIMIT = 50;
   const LOG_LIMIT = 200;
   const DEFAULT_TIMEOUT_MS = 15000;
+  const DEFAULT_RETRY_COUNT = 2;
+  const DEFAULT_RETRY_DELAY_MS = 1000;
   const PRESET_STORAGE_KEY = "graphql-editor-presets";
   const DRAFT_STORAGE_KEY = "graphql-editor-draft";
   const DRAFT_SAVE_DELAY_MS = 600;
@@ -847,6 +849,11 @@ function createGraphQLStore() {
     history: [],
     lastExecution: null,
     requestTimeoutMs: DEFAULT_TIMEOUT_MS,
+    retryPolicy: {
+      maxRetries: DEFAULT_RETRY_COUNT,
+      retryDelayMs: DEFAULT_RETRY_DELAY_MS,
+    },
+    retryAttempt: null,
     logs: [],
     savedPresets: [],
     draft: null,
@@ -1001,6 +1008,17 @@ function createGraphQLStore() {
       ...state,
       logs: [...(state.logs ?? []), entry].slice(-LOG_LIMIT),
     }));
+  };
+
+  /**
+   * Provide a lightweight hook for UI components to emit structured logs.
+   * Centralizing UI logs keeps observability consistent across the app.
+   */
+  const logUiEvent = (level, message, context = {}) => {
+    recordLog(level, message, {
+      scope: "ui",
+      ...context,
+    });
   };
 
   /**
@@ -1322,6 +1340,28 @@ function createGraphQLStore() {
       update((state) => ({ ...state, requestTimeoutMs: normalizedTimeout }));
     },
 
+    setRetryPolicy: ({ maxRetries, retryDelayMs }) => {
+      const normalizedMaxRetries =
+        Number.isFinite(maxRetries) && maxRetries >= 0
+          ? Math.round(maxRetries)
+          : 0;
+      const normalizedRetryDelay =
+        Number.isFinite(retryDelayMs) && retryDelayMs >= 0
+          ? Math.round(retryDelayMs)
+          : DEFAULT_RETRY_DELAY_MS;
+      recordLog(LEVELS.INFO, "Updated retry policy", {
+        maxRetries: normalizedMaxRetries,
+        retryDelayMs: normalizedRetryDelay,
+      });
+      update((state) => ({
+        ...state,
+        retryPolicy: {
+          maxRetries: normalizedMaxRetries,
+          retryDelayMs: normalizedRetryDelay,
+        },
+      }));
+    },
+
     cancelActiveRequest: () => {
       if (!activeController) {
         recordLog(LEVELS.WARN, "Cancel requested with no active request");
@@ -1387,6 +1427,7 @@ function createGraphQLStore() {
         error: null,
         loading: false,
         lastExecution: null,
+        retryAttempt: null,
       }));
     },
 
@@ -1540,6 +1581,7 @@ function createGraphQLStore() {
           results: null,
           error: null,
           loading: false,
+          retryAttempt: null,
           queryStructure: parseQuery(DEFAULT_QUERY),
         };
         scheduleDraftSave(buildDraftPayload(nextState));
@@ -1552,12 +1594,19 @@ function createGraphQLStore() {
       update((state) => ({ ...state, logs: [] }));
     },
 
+    logUiEvent,
+
     /**
      * Execute the GraphQL request while handling abort + timeout.
      * Timeout is applied via AbortController to ensure fetch is cancelled.
      */
     executeQuery: async () => {
-      update((state) => ({ ...state, loading: true, error: null }));
+      update((state) => ({
+        ...state,
+        loading: true,
+        error: null,
+        retryAttempt: 0,
+      }));
 
       const currentState = get(store);
       const startedAt = Date.now();
@@ -1566,34 +1615,67 @@ function createGraphQLStore() {
           ? crypto.randomUUID()
           : `${Date.now()}`;
 
+      /**
+       * Sleep between retry attempts to avoid immediate hammering of the endpoint.
+       * @param {number} delayMs
+       */
+      const waitForRetry = (delayMs) =>
+        new Promise((resolve) => setTimeout(resolve, delayMs));
+
+      /**
+       * Determine if an HTTP response status should trigger a retry.
+       * @param {number} statusCode
+       */
+      const shouldRetryStatus = (statusCode) =>
+        statusCode === 429 || (statusCode >= 500 && statusCode <= 599);
+
+      const finalizeExecution = ({
+        status,
+        errorMessage,
+        result,
+        statusCode,
+        statusText,
+      }) => {
+        update((state) => ({
+          ...state,
+          results: result ?? null,
+          loading: false,
+          retryAttempt: null,
+          lastExecution: {
+            id: entryId,
+            status,
+            durationMs: Date.now() - startedAt,
+            endpoint: currentState.endpoint,
+            timestamp: new Date().toISOString(),
+            statusCode,
+            statusText,
+            error: errorMessage ?? null,
+          },
+          error: status === "success" ? null : errorMessage,
+        }));
+
+        addHistoryEntry({
+          id: entryId,
+          timestamp: new Date().toISOString(),
+          endpoint: currentState.endpoint,
+          query: currentState.query,
+          variables: currentState.variables,
+          status,
+          durationMs: Date.now() - startedAt,
+          statusCode,
+          statusText,
+          error: errorMessage ?? null,
+        });
+      };
+
       try {
         if (!currentState.endpoint) {
           recordLog(LEVELS.WARN, "Execution blocked: missing endpoint", {
             entryId,
           });
-          update((state) => ({
-            ...state,
-            error: "Endpoint is required before executing a query.",
-            loading: false,
-            results: null,
-            lastExecution: {
-              id: entryId,
-              status: "invalid",
-              durationMs: Date.now() - startedAt,
-              endpoint: currentState.endpoint,
-              timestamp: new Date().toISOString(),
-              error: "Endpoint is required before executing a query.",
-            },
-          }));
-          addHistoryEntry({
-            id: entryId,
-            timestamp: new Date().toISOString(),
-            endpoint: currentState.endpoint,
-            query: currentState.query,
-            variables: currentState.variables,
+          finalizeExecution({
             status: "invalid",
-            durationMs: Date.now() - startedAt,
-            error: "Endpoint is required before executing a query.",
+            errorMessage: "Endpoint is required before executing a query.",
           });
           return;
         }
@@ -1608,29 +1690,9 @@ function createGraphQLStore() {
             entryId,
             error: parseError.message,
           });
-          update((state) => ({
-            ...state,
-            error: `Variables JSON error: ${parseError.message}`,
-            loading: false,
-            results: null,
-            lastExecution: {
-              id: entryId,
-              status: "invalid",
-              durationMs: Date.now() - startedAt,
-              endpoint: currentState.endpoint,
-              timestamp: new Date().toISOString(),
-              error: `Variables JSON error: ${parseError.message}`,
-            },
-          }));
-          addHistoryEntry({
-            id: entryId,
-            timestamp: new Date().toISOString(),
-            endpoint: currentState.endpoint,
-            query: currentState.query,
-            variables: currentState.variables,
+          finalizeExecution({
             status: "invalid",
-            durationMs: Date.now() - startedAt,
-            error: `Variables JSON error: ${parseError.message}`,
+            errorMessage: `Variables JSON error: ${parseError.message}`,
           });
           return;
         }
@@ -1644,153 +1706,196 @@ function createGraphQLStore() {
           }
         }
 
-        activeController = new AbortController();
         const timeoutMs = currentState.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
-        if (timeoutMs > 0) {
-          activeTimeoutId = setTimeout(() => {
-            activeController?.abort("timeout");
-          }, timeoutMs);
-        }
+        const retryPolicy = currentState.retryPolicy ?? {
+          maxRetries: DEFAULT_RETRY_COUNT,
+          retryDelayMs: DEFAULT_RETRY_DELAY_MS,
+        };
+        const maxAttempts = (retryPolicy.maxRetries ?? 0) + 1;
 
-        recordLog(LEVELS.INFO, "Executing GraphQL request", {
-          entryId,
-          endpoint: currentState.endpoint,
-          timeoutMs,
-          hasVariables: Object.keys(variables).length > 0,
-        });
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          update((state) => ({ ...state, retryAttempt: attempt }));
+          activeController = new AbortController();
+          if (timeoutMs > 0) {
+            activeTimeoutId = setTimeout(() => {
+              activeController?.abort("timeout");
+            }, timeoutMs);
+          }
 
-        const response = await fetch(currentState.endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: currentState.query,
-            variables: variables,
-          }),
-          signal: activeController.signal,
-        });
-
-        const result = await response.json();
-
-        const errorMessages = Array.isArray(result.errors)
-          ? result.errors
-              .map((err) => err.message)
-              .filter(Boolean)
-              .join("; ")
-          : null;
-        update((state) => ({
-          ...state,
-          results: result,
-          loading: false,
-          lastExecution: {
-            id: entryId,
-            status: result.errors ? "error" : "success",
-            durationMs: Date.now() - startedAt,
-            endpoint: currentState.endpoint,
-            timestamp: new Date().toISOString(),
-            statusCode: response.status,
-            statusText: response.statusText,
-            error: errorMessages,
-          },
-        }));
-
-        recordLog(LEVELS.INFO, "GraphQL request completed", {
-          entryId,
-          status: result.errors ? "error" : "success",
-          statusCode: response.status,
-          durationMs: Date.now() - startedAt,
-        });
-
-        addHistoryEntry({
-          id: entryId,
-          timestamp: new Date().toISOString(),
-          endpoint: currentState.endpoint,
-          query: currentState.query,
-          variables: currentState.variables,
-          status: result.errors ? "error" : "success",
-          durationMs: Date.now() - startedAt,
-          statusCode: response.status,
-          statusText: response.statusText,
-          error: errorMessages,
-        });
-      } catch (error) {
-        const wasAborted = activeController?.signal?.aborted;
-        const abortReason = activeController?.signal?.reason;
-        const isTimeout = abortReason === "timeout";
-        if (wasAborted) {
-          const cancelMessage = isTimeout
-            ? `Request timed out after ${currentState.requestTimeoutMs}ms.`
-            : "Request cancelled.";
-          recordLog(LEVELS.WARN, "GraphQL request cancelled", {
+          recordLog(LEVELS.INFO, "Executing GraphQL request", {
             entryId,
-            reason: abortReason ?? "aborted",
-            durationMs: Date.now() - startedAt,
-          });
-          update((state) => ({
-            ...state,
-            error: null,
-            loading: false,
-            results: null,
-            lastExecution: {
-              id: entryId,
-              status: "cancelled",
-              durationMs: Date.now() - startedAt,
-              endpoint: currentState.endpoint,
-              timestamp: new Date().toISOString(),
-              error: cancelMessage,
-            },
-          }));
-
-          addHistoryEntry({
-            id: entryId,
-            timestamp: new Date().toISOString(),
             endpoint: currentState.endpoint,
-            query: currentState.query,
-            variables: currentState.variables,
-            status: "cancelled",
-            durationMs: Date.now() - startedAt,
-            error: cancelMessage,
+            timeoutMs,
+            attempt: attempt + 1,
+            maxAttempts,
+            hasVariables: Object.keys(variables).length > 0,
           });
-          return;
-        }
 
-        recordLog(LEVELS.ERROR, "GraphQL request failed", {
+          try {
+            const response = await fetch(currentState.endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                query: currentState.query,
+                variables: variables,
+              }),
+              signal: activeController.signal,
+            });
+
+            let result;
+            try {
+              result = await response.json();
+            } catch (parseError) {
+              throw new Error(
+                `Response JSON parse error: ${parseError.message}`,
+              );
+            }
+
+            if (!response.ok) {
+              const statusMessage = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
+              if (
+                shouldRetryStatus(response.status) &&
+                attempt < maxAttempts - 1
+              ) {
+                recordLog(
+                  LEVELS.WARN,
+                  "Retrying GraphQL request after HTTP error",
+                  {
+                    entryId,
+                    statusCode: response.status,
+                    statusText: response.statusText,
+                    attempt: attempt + 1,
+                    maxAttempts,
+                    retryDelayMs: retryPolicy.retryDelayMs,
+                  },
+                );
+                await waitForRetry(retryPolicy.retryDelayMs);
+                continue;
+              }
+
+              finalizeExecution({
+                status: "error",
+                errorMessage: statusMessage,
+                result,
+                statusCode: response.status,
+                statusText: response.statusText,
+              });
+              recordLog(
+                LEVELS.ERROR,
+                "GraphQL request failed with HTTP error",
+                {
+                  entryId,
+                  statusCode: response.status,
+                  statusText: response.statusText,
+                  durationMs: Date.now() - startedAt,
+                },
+              );
+              return;
+            }
+
+            const errorMessages = Array.isArray(result.errors)
+              ? result.errors
+                  .map((err) => err.message)
+                  .filter(Boolean)
+                  .join("; ")
+              : null;
+
+            finalizeExecution({
+              status: result.errors ? "error" : "success",
+              errorMessage: errorMessages,
+              result,
+              statusCode: response.status,
+              statusText: response.statusText,
+            });
+
+            recordLog(LEVELS.INFO, "GraphQL request completed", {
+              entryId,
+              status: result.errors ? "error" : "success",
+              statusCode: response.status,
+              durationMs: Date.now() - startedAt,
+            });
+            return;
+          } catch (error) {
+            const wasAborted = activeController?.signal?.aborted;
+            const abortReason = activeController?.signal?.reason;
+            const isTimeout = abortReason === "timeout";
+            const canRetry =
+              attempt < maxAttempts - 1 &&
+              !wasAborted &&
+              error?.name === "TypeError";
+
+            if (isTimeout && attempt < maxAttempts - 1) {
+              recordLog(LEVELS.WARN, "Retrying GraphQL request after timeout", {
+                entryId,
+                attempt: attempt + 1,
+                maxAttempts,
+                retryDelayMs: retryPolicy.retryDelayMs,
+              });
+              await waitForRetry(retryPolicy.retryDelayMs);
+              continue;
+            }
+
+            if (wasAborted) {
+              const cancelMessage = isTimeout
+                ? `Request timed out after ${timeoutMs}ms.`
+                : "Request cancelled.";
+              recordLog(LEVELS.WARN, "GraphQL request cancelled", {
+                entryId,
+                reason: abortReason ?? "aborted",
+                durationMs: Date.now() - startedAt,
+              });
+              finalizeExecution({
+                status: "cancelled",
+                errorMessage: cancelMessage,
+              });
+              return;
+            }
+
+            if (canRetry) {
+              recordLog(
+                LEVELS.WARN,
+                "Retrying GraphQL request after network error",
+                {
+                  entryId,
+                  attempt: attempt + 1,
+                  maxAttempts,
+                  retryDelayMs: retryPolicy.retryDelayMs,
+                  error: error.message,
+                },
+              );
+              await waitForRetry(retryPolicy.retryDelayMs);
+              continue;
+            }
+
+            recordLog(LEVELS.ERROR, "GraphQL request failed", {
+              entryId,
+              error: error.message,
+              durationMs: Date.now() - startedAt,
+            });
+            finalizeExecution({
+              status: "error",
+              errorMessage: error.message,
+            });
+            return;
+          } finally {
+            if (activeTimeoutId) {
+              clearTimeout(activeTimeoutId);
+              activeTimeoutId = null;
+            }
+            activeController = null;
+          }
+        }
+      } catch (error) {
+        recordLog(LEVELS.ERROR, "GraphQL request failed before execution", {
           entryId,
           error: error.message,
-          durationMs: Date.now() - startedAt,
         });
-        update((state) => ({
-          ...state,
-          error: error.message,
-          loading: false,
-          results: null,
-          lastExecution: {
-            id: entryId,
-            status: "error",
-            durationMs: Date.now() - startedAt,
-            endpoint: currentState.endpoint,
-            timestamp: new Date().toISOString(),
-            error: error.message,
-          },
-        }));
-
-        addHistoryEntry({
-          id: entryId,
-          timestamp: new Date().toISOString(),
-          endpoint: currentState.endpoint,
-          query: currentState.query,
-          variables: currentState.variables,
+        finalizeExecution({
           status: "error",
-          durationMs: Date.now() - startedAt,
-          error: error.message,
+          errorMessage: error.message,
         });
-      } finally {
-        if (activeTimeoutId) {
-          clearTimeout(activeTimeoutId);
-          activeTimeoutId = null;
-        }
-        activeController = null;
       }
     },
 
