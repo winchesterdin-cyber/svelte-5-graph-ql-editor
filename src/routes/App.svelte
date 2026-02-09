@@ -7,12 +7,11 @@
   import ExampleQueries from './components/ExampleQueries.svelte';
   import { graphqlStore } from './stores/graphql-store.js';
 
-  console.log('[v0] App.svelte: Initializing GraphQL Visualizer');
-
   let activeTab = $state('editor');
   let showSchema = $state(false);
   let showMobileMenu = $state(false);
   let darkMode = $state(false);
+  let endpoint = $state('');
 
   const tabs = [
     { id: 'editor', label: 'Query Editor' },
@@ -21,14 +20,19 @@
     { id: 'results', label: 'Results' }
   ];
 
+  $effect(() => {
+    const unsubscribe = graphqlStore.subscribe((state) => {
+      endpoint = state.endpoint;
+    });
+    return unsubscribe;
+  });
+
   function switchTab(tabId) {
-    console.log('[v0] App.svelte: Switching to tab:', tabId);
     activeTab = tabId;
     showMobileMenu = false;
   }
 
   function toggleSchema() {
-    console.log('[v0] App.svelte: Toggling schema explorer:', !showSchema);
     showSchema = !showSchema;
   }
 
@@ -37,8 +41,11 @@
   }
 
   function toggleDarkMode() {
-    console.log('[v0] App.svelte: Toggling dark mode:', !darkMode);
     darkMode = !darkMode;
+  }
+
+  function handleEndpointChange(event) {
+    graphqlStore.updateEndpoint(event.target.value);
   }
 </script>
 
@@ -53,7 +60,8 @@
           <span class="text-sm transition-colors duration-200 {darkMode ? 'text-gray-400' : 'text-gray-500'}">Endpoint:</span>
           <input 
             type="text" 
-            bind:value={graphqlStore.endpoint}
+            value={endpoint}
+            oninput={handleEndpointChange}
             placeholder="https://api.example.com/graphql"
             class="px-3 py-1 border rounded text-sm w-64 transition-colors duration-200 {darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}"
           />
@@ -114,7 +122,8 @@
             <span class="text-sm transition-colors duration-200 {darkMode ? 'text-gray-400' : 'text-gray-500'}">Endpoint:</span>
             <input 
               type="text" 
-              bind:value={graphqlStore.endpoint}
+              value={endpoint}
+              oninput={handleEndpointChange}
               placeholder="https://api.example.com/graphql"
               class="px-3 py-2 border rounded text-sm w-full transition-colors duration-200 {darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}"
             />

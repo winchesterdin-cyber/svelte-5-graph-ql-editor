@@ -1,19 +1,39 @@
 <script>
+  import { onMount } from 'svelte';
   import { graphqlStore } from '../stores/graphql-store.js';
-
+  import SavedPresets from './SavedPresets.svelte';
 
   let query = $state('');
+  let endpoint = $state('');
+  let variables = $state('');
+  let draft = $state(null);
   let isExecuting = $state(false);
   let requestTimeoutMs = $state(15000);
 
   // Subscribe to store changes
   $effect(() => {
-    const unsubscribe = graphqlStore.subscribe(state => {
+    const unsubscribe = graphqlStore.subscribe((state) => {
       query = state.query;
+      endpoint = state.endpoint;
+      variables = state.variables;
+      draft = state.draft;
       isExecuting = state.loading;
       requestTimeoutMs = state.requestTimeoutMs ?? 0;
     });
     return unsubscribe;
+  });
+
+  const draftToRestore = $derived(() => {
+    if (!draft) return null;
+    const hasChanges =
+      draft.endpoint !== endpoint ||
+      draft.query !== query ||
+      draft.variables !== variables;
+    return hasChanges ? draft : null;
+  });
+
+  onMount(() => {
+    graphqlStore.loadDraft();
   });
 
   function handleQueryChange(event) {
@@ -50,6 +70,19 @@
     const parsed = rawValue === '' ? 0 : Number(rawValue);
     if (Number.isNaN(parsed) || parsed < 0) return;
     graphqlStore.setRequestTimeoutMs(parsed);
+  }
+
+  function restoreDraft() {
+    graphqlStore.applyDraft();
+  }
+
+  function dismissDraft() {
+    graphqlStore.clearDraft();
+  }
+
+  function formatDraftTime(timestamp) {
+    if (!timestamp) return 'unknown time';
+    return new Date(timestamp).toLocaleString();
   }
 </script>
 
@@ -98,6 +131,31 @@
     </div>
   </div>
 
+  {#if draftToRestore}
+    <div class="mb-4 flex flex-col gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p class="font-semibold">Draft detected</p>
+        <p class="text-xs text-amber-700">
+          Restore your auto-saved draft from {formatDraftTime(draftToRestore.updatedAt)}?
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          onclick={restoreDraft}
+          class="rounded bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700"
+        >
+          Restore draft
+        </button>
+        <button
+          onclick={dismissDraft}
+          class="rounded bg-white px-3 py-1 text-xs text-amber-800 hover:bg-amber-100"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <div class="flex-1 border border-gray-300 rounded">
     <textarea
       value={query}
@@ -106,6 +164,8 @@
       class="w-full h-full p-4 font-mono text-sm resize-none border-none outline-none"
     ></textarea>
   </div>
+
+  <SavedPresets />
 
   <div class="mt-4 text-sm text-gray-600">
     <p>💡 <strong>Tips:</strong></p>
