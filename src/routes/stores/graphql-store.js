@@ -1,7 +1,6 @@
-import { writable } from "svelte/store"
-import { buildQueryFromStructure, parseQuery } from "./graphql-helpers.js"
-import { LEVELS, logEvent } from "./logger.js"
-
+import { writable } from "svelte/store";
+import { buildQueryFromStructure, parseQuery } from "./graphql-helpers.js";
+import { LEVELS, logEvent } from "./logger.js";
 
 // Create reactive store for GraphQL state
 const DEFAULT_QUERY = `query GetCountries($first: Int) {
@@ -11,9 +10,9 @@ const DEFAULT_QUERY = `query GetCountries($first: Int) {
     emoji
     currency
   }
-}`
+}`;
 
-const DEFAULT_VARIABLES = '{\n  "first": 5\n}'
+const DEFAULT_VARIABLES = '{\n  "first": 5\n}';
 
 const DEMO_SCHEMAS = {
   blog: {
@@ -36,18 +35,32 @@ const DEMO_SCHEMAS = {
             },
             {
               name: "users",
-              type: { name: "User", kind: "LIST", ofType: { name: "User", kind: "OBJECT" } },
+              type: {
+                name: "User",
+                kind: "LIST",
+                ofType: { name: "User", kind: "OBJECT" },
+              },
               args: [
                 { name: "first", type: { name: "Int", kind: "SCALAR" } },
-                { name: "filter", type: { name: "UserFilter", kind: "INPUT_OBJECT" } },
+                {
+                  name: "filter",
+                  type: { name: "UserFilter", kind: "INPUT_OBJECT" },
+                },
               ],
             },
             {
               name: "posts",
-              type: { name: "Post", kind: "LIST", ofType: { name: "Post", kind: "OBJECT" } },
+              type: {
+                name: "Post",
+                kind: "LIST",
+                ofType: { name: "Post", kind: "OBJECT" },
+              },
               args: [
                 { name: "authorId", type: { name: "ID", kind: "SCALAR" } },
-                { name: "published", type: { name: "Boolean", kind: "SCALAR" } },
+                {
+                  name: "published",
+                  type: { name: "Boolean", kind: "SCALAR" },
+                },
               ],
             },
           ],
@@ -58,9 +71,21 @@ const DEMO_SCHEMAS = {
           description: "A user in the system",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "email", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "avatar", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "email",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "avatar",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
             {
               name: "profile",
               type: { name: "UserProfile", kind: "OBJECT" },
@@ -68,15 +93,26 @@ const DEMO_SCHEMAS = {
             },
             {
               name: "posts",
-              type: { name: "Post", kind: "LIST", ofType: { name: "Post", kind: "OBJECT" } },
+              type: {
+                name: "Post",
+                kind: "LIST",
+                ofType: { name: "Post", kind: "OBJECT" },
+              },
               args: [
                 { name: "first", type: { name: "Int", kind: "SCALAR" } },
-                { name: "published", type: { name: "Boolean", kind: "SCALAR" } },
+                {
+                  name: "published",
+                  type: { name: "Boolean", kind: "SCALAR" },
+                },
               ],
             },
             {
               name: "comments",
-              type: { name: "Comment", kind: "LIST", ofType: { name: "Comment", kind: "OBJECT" } },
+              type: {
+                name: "Comment",
+                kind: "LIST",
+                ofType: { name: "Comment", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -87,8 +123,16 @@ const DEMO_SCHEMAS = {
           description: "Extended user profile information",
           fields: [
             { name: "bio", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "website", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "location", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "website",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "location",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
             {
               name: "socialLinks",
               type: { name: "SocialLinks", kind: "OBJECT" },
@@ -106,35 +150,79 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           description: "Social media links",
           fields: [
-            { name: "twitter", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "github", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "linkedin", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "twitter",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "github",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "linkedin",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
         {
           name: "UserPreferences",
           kind: "OBJECT",
           fields: [
-            { name: "theme", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "notifications", type: { name: "NotificationSettings", kind: "OBJECT" }, args: [] },
-            { name: "privacy", type: { name: "PrivacySettings", kind: "OBJECT" }, args: [] },
+            {
+              name: "theme",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "notifications",
+              type: { name: "NotificationSettings", kind: "OBJECT" },
+              args: [],
+            },
+            {
+              name: "privacy",
+              type: { name: "PrivacySettings", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
           name: "NotificationSettings",
           kind: "OBJECT",
           fields: [
-            { name: "email", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
-            { name: "push", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
-            { name: "sms", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
+            {
+              name: "email",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "push",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "sms",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
         {
           name: "PrivacySettings",
           kind: "OBJECT",
           fields: [
-            { name: "profileVisible", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
-            { name: "showEmail", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
+            {
+              name: "profileVisible",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "showEmail",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
         {
@@ -143,10 +231,26 @@ const DEMO_SCHEMAS = {
           description: "A blog post",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "title", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "content", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "published", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
-            { name: "createdAt", type: { name: "DateTime", kind: "SCALAR" }, args: [] },
+            {
+              name: "title",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "content",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "published",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "createdAt",
+              type: { name: "DateTime", kind: "SCALAR" },
+              args: [],
+            },
             {
               name: "author",
               type: { name: "User", kind: "OBJECT" },
@@ -154,12 +258,20 @@ const DEMO_SCHEMAS = {
             },
             {
               name: "comments",
-              type: { name: "Comment", kind: "LIST", ofType: { name: "Comment", kind: "OBJECT" } },
+              type: {
+                name: "Comment",
+                kind: "LIST",
+                ofType: { name: "Comment", kind: "OBJECT" },
+              },
               args: [{ name: "first", type: { name: "Int", kind: "SCALAR" } }],
             },
             {
               name: "tags",
-              type: { name: "Tag", kind: "LIST", ofType: { name: "Tag", kind: "OBJECT" } },
+              type: {
+                name: "Tag",
+                kind: "LIST",
+                ofType: { name: "Tag", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -170,8 +282,16 @@ const DEMO_SCHEMAS = {
           description: "A comment on a post",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "content", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "createdAt", type: { name: "DateTime", kind: "SCALAR" }, args: [] },
+            {
+              name: "content",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "createdAt",
+              type: { name: "DateTime", kind: "SCALAR" },
+              args: [],
+            },
             {
               name: "author",
               type: { name: "User", kind: "OBJECT" },
@@ -184,7 +304,11 @@ const DEMO_SCHEMAS = {
             },
             {
               name: "replies",
-              type: { name: "Comment", kind: "LIST", ofType: { name: "Comment", kind: "OBJECT" } },
+              type: {
+                name: "Comment",
+                kind: "LIST",
+                ofType: { name: "Comment", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -194,8 +318,16 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "color", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "color",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
       ],
@@ -222,11 +354,18 @@ const DEMO_SCHEMAS = {
             },
             {
               name: "products",
-              type: { name: "Product", kind: "LIST", ofType: { name: "Product", kind: "OBJECT" } },
+              type: {
+                name: "Product",
+                kind: "LIST",
+                ofType: { name: "Product", kind: "OBJECT" },
+              },
               args: [
                 { name: "category", type: { name: "String", kind: "SCALAR" } },
                 { name: "inStock", type: { name: "Boolean", kind: "SCALAR" } },
-                { name: "priceRange", type: { name: "PriceRange", kind: "INPUT_OBJECT" } },
+                {
+                  name: "priceRange",
+                  type: { name: "PriceRange", kind: "INPUT_OBJECT" },
+                },
               ],
             },
             {
@@ -241,14 +380,38 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "description", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "price", type: { name: "Money", kind: "OBJECT" }, args: [] },
-            { name: "category", type: { name: "Category", kind: "OBJECT" }, args: [] },
-            { name: "inventory", type: { name: "Inventory", kind: "OBJECT" }, args: [] },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "description",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "price",
+              type: { name: "Money", kind: "OBJECT" },
+              args: [],
+            },
+            {
+              name: "category",
+              type: { name: "Category", kind: "OBJECT" },
+              args: [],
+            },
+            {
+              name: "inventory",
+              type: { name: "Inventory", kind: "OBJECT" },
+              args: [],
+            },
             {
               name: "reviews",
-              type: { name: "Review", kind: "LIST", ofType: { name: "Review", kind: "OBJECT" } },
+              type: {
+                name: "Review",
+                kind: "LIST",
+                ofType: { name: "Review", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -257,8 +420,16 @@ const DEMO_SCHEMAS = {
           name: "Money",
           kind: "OBJECT",
           fields: [
-            { name: "amount", type: { name: "Float", kind: "SCALAR" }, args: [] },
-            { name: "currency", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "amount",
+              type: { name: "Float", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "currency",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
         {
@@ -266,11 +437,23 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "parent", type: { name: "Category", kind: "OBJECT" }, args: [] },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "parent",
+              type: { name: "Category", kind: "OBJECT" },
+              args: [],
+            },
             {
               name: "children",
-              type: { name: "Category", kind: "LIST", ofType: { name: "Category", kind: "OBJECT" } },
+              type: {
+                name: "Category",
+                kind: "LIST",
+                ofType: { name: "Category", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -279,9 +462,21 @@ const DEMO_SCHEMAS = {
           name: "Inventory",
           kind: "OBJECT",
           fields: [
-            { name: "quantity", type: { name: "Int", kind: "SCALAR" }, args: [] },
-            { name: "reserved", type: { name: "Int", kind: "SCALAR" }, args: [] },
-            { name: "warehouse", type: { name: "Warehouse", kind: "OBJECT" }, args: [] },
+            {
+              name: "quantity",
+              type: { name: "Int", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "reserved",
+              type: { name: "Int", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "warehouse",
+              type: { name: "Warehouse", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
@@ -289,18 +484,42 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "location", type: { name: "Address", kind: "OBJECT" }, args: [] },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "location",
+              type: { name: "Address", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
           name: "Address",
           kind: "OBJECT",
           fields: [
-            { name: "street", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "city", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "country", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "coordinates", type: { name: "Coordinates", kind: "OBJECT" }, args: [] },
+            {
+              name: "street",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "city",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "country",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "coordinates",
+              type: { name: "Coordinates", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
@@ -316,14 +535,30 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "customer", type: { name: "Customer", kind: "OBJECT" }, args: [] },
             {
-              name: "items",
-              type: { name: "OrderItem", kind: "LIST", ofType: { name: "OrderItem", kind: "OBJECT" } },
+              name: "customer",
+              type: { name: "Customer", kind: "OBJECT" },
               args: [],
             },
-            { name: "total", type: { name: "Money", kind: "OBJECT" }, args: [] },
-            { name: "status", type: { name: "OrderStatus", kind: "ENUM" }, args: [] },
+            {
+              name: "items",
+              type: {
+                name: "OrderItem",
+                kind: "LIST",
+                ofType: { name: "OrderItem", kind: "OBJECT" },
+              },
+              args: [],
+            },
+            {
+              name: "total",
+              type: { name: "Money", kind: "OBJECT" },
+              args: [],
+            },
+            {
+              name: "status",
+              type: { name: "OrderStatus", kind: "ENUM" },
+              args: [],
+            },
           ],
         },
         {
@@ -331,11 +566,23 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "email", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "profile", type: { name: "CustomerProfile", kind: "OBJECT" }, args: [] },
+            {
+              name: "email",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "profile",
+              type: { name: "CustomerProfile", kind: "OBJECT" },
+              args: [],
+            },
             {
               name: "orders",
-              type: { name: "Order", kind: "LIST", ofType: { name: "Order", kind: "OBJECT" } },
+              type: {
+                name: "Order",
+                kind: "LIST",
+                ofType: { name: "Order", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -344,11 +591,23 @@ const DEMO_SCHEMAS = {
           name: "CustomerProfile",
           kind: "OBJECT",
           fields: [
-            { name: "firstName", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "lastName", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "firstName",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "lastName",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
             {
               name: "addresses",
-              type: { name: "Address", kind: "LIST", ofType: { name: "Address", kind: "OBJECT" } },
+              type: {
+                name: "Address",
+                kind: "LIST",
+                ofType: { name: "Address", kind: "OBJECT" },
+              },
               args: [],
             },
           ],
@@ -357,9 +616,21 @@ const DEMO_SCHEMAS = {
           name: "OrderItem",
           kind: "OBJECT",
           fields: [
-            { name: "product", type: { name: "Product", kind: "OBJECT" }, args: [] },
-            { name: "quantity", type: { name: "Int", kind: "SCALAR" }, args: [] },
-            { name: "price", type: { name: "Money", kind: "OBJECT" }, args: [] },
+            {
+              name: "product",
+              type: { name: "Product", kind: "OBJECT" },
+              args: [],
+            },
+            {
+              name: "quantity",
+              type: { name: "Int", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "price",
+              type: { name: "Money", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
@@ -368,8 +639,16 @@ const DEMO_SCHEMAS = {
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
             { name: "rating", type: { name: "Int", kind: "SCALAR" }, args: [] },
-            { name: "comment", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "author", type: { name: "Customer", kind: "OBJECT" }, args: [] },
+            {
+              name: "comment",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "author",
+              type: { name: "Customer", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
       ],
@@ -397,7 +676,9 @@ const DEMO_SCHEMAS = {
             {
               name: "user",
               type: { name: "User", kind: "OBJECT" },
-              args: [{ name: "login", type: { name: "String", kind: "SCALAR" } }],
+              args: [
+                { name: "login", type: { name: "String", kind: "SCALAR" } },
+              ],
             },
           ],
         },
@@ -406,8 +687,16 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "description", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "description",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
             { name: "owner", type: { name: "User", kind: "OBJECT" }, args: [] },
             {
               name: "stargazers",
@@ -424,7 +713,11 @@ const DEMO_SCHEMAS = {
                 { name: "first", type: { name: "Int", kind: "SCALAR" } },
                 {
                   name: "states",
-                  type: { name: "IssueState", kind: "LIST", ofType: { name: "IssueState", kind: "ENUM" } },
+                  type: {
+                    name: "IssueState",
+                    kind: "LIST",
+                    ofType: { name: "IssueState", kind: "ENUM" },
+                  },
                 },
               ],
             },
@@ -435,30 +728,57 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "id", type: { name: "ID", kind: "SCALAR" }, args: [] },
-            { name: "login", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "name", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "login",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "name",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
             {
               name: "repositories",
               type: { name: "RepositoryConnection", kind: "OBJECT" },
               args: [
                 { name: "first", type: { name: "Int", kind: "SCALAR" } },
-                { name: "orderBy", type: { name: "RepositoryOrder", kind: "INPUT_OBJECT" } },
+                {
+                  name: "orderBy",
+                  type: { name: "RepositoryOrder", kind: "INPUT_OBJECT" },
+                },
               ],
             },
-            { name: "followers", type: { name: "FollowerConnection", kind: "OBJECT" }, args: [] },
+            {
+              name: "followers",
+              type: { name: "FollowerConnection", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
           name: "StargazerConnection",
           kind: "OBJECT",
           fields: [
-            { name: "totalCount", type: { name: "Int", kind: "SCALAR" }, args: [] },
             {
-              name: "edges",
-              type: { name: "StargazerEdge", kind: "LIST", ofType: { name: "StargazerEdge", kind: "OBJECT" } },
+              name: "totalCount",
+              type: { name: "Int", kind: "SCALAR" },
               args: [],
             },
-            { name: "pageInfo", type: { name: "PageInfo", kind: "OBJECT" }, args: [] },
+            {
+              name: "edges",
+              type: {
+                name: "StargazerEdge",
+                kind: "LIST",
+                ofType: { name: "StargazerEdge", kind: "OBJECT" },
+              },
+              args: [],
+            },
+            {
+              name: "pageInfo",
+              type: { name: "PageInfo", kind: "OBJECT" },
+              args: [],
+            },
           ],
         },
         {
@@ -466,17 +786,37 @@ const DEMO_SCHEMAS = {
           kind: "OBJECT",
           fields: [
             { name: "node", type: { name: "User", kind: "OBJECT" }, args: [] },
-            { name: "starredAt", type: { name: "DateTime", kind: "SCALAR" }, args: [] },
+            {
+              name: "starredAt",
+              type: { name: "DateTime", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
         {
           name: "PageInfo",
           kind: "OBJECT",
           fields: [
-            { name: "hasNextPage", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
-            { name: "hasPreviousPage", type: { name: "Boolean", kind: "SCALAR" }, args: [] },
-            { name: "startCursor", type: { name: "String", kind: "SCALAR" }, args: [] },
-            { name: "endCursor", type: { name: "String", kind: "SCALAR" }, args: [] },
+            {
+              name: "hasNextPage",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "hasPreviousPage",
+              type: { name: "Boolean", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "startCursor",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
+            {
+              name: "endCursor",
+              type: { name: "String", kind: "SCALAR" },
+              args: [],
+            },
           ],
         },
       ],
@@ -484,14 +824,18 @@ const DEMO_SCHEMAS = {
       mutationType: { name: "Mutation" },
     },
   },
-}
+};
 
 function createGraphQLStore() {
-  const HISTORY_LIMIT = 50
-  const LOG_LIMIT = 200
-  const DEFAULT_TIMEOUT_MS = 15000
-  let activeController = null
-  let activeTimeoutId = null
+  const HISTORY_LIMIT = 50;
+  const LOG_LIMIT = 200;
+  const DEFAULT_TIMEOUT_MS = 15000;
+  const PRESET_STORAGE_KEY = "graphql-editor-presets";
+  const DRAFT_STORAGE_KEY = "graphql-editor-draft";
+  const DRAFT_SAVE_DELAY_MS = 600;
+  let activeController = null;
+  let activeTimeoutId = null;
+  let draftSaveTimeoutId = null;
   const initialState = {
     endpoint: "https://countries.trevorblades.com/",
     query: DEFAULT_QUERY,
@@ -504,6 +848,8 @@ function createGraphQLStore() {
     lastExecution: null,
     requestTimeoutMs: DEFAULT_TIMEOUT_MS,
     logs: [],
+    savedPresets: [],
+    draft: null,
     queryStructure: {
       operations: [
         {
@@ -517,13 +863,100 @@ function createGraphQLStore() {
     },
     currentSchemaKey: null,
     availableSchemas: DEMO_SCHEMAS,
-  }
+  };
 
-  const { subscribe, set, update } = writable(initialState)
-  const store = { subscribe, set, update }
+  const { subscribe, set, update } = writable(initialState);
+  const store = { subscribe, set, update };
+
+  /**
+   * Safely read saved workspaces from localStorage.
+   * This guards against SSR environments and malformed JSON.
+   */
+  const readPresetsFromStorage = () => {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      recordLog(LEVELS.WARN, "Failed to parse saved workspaces", {
+        error: error.message,
+      });
+      return [];
+    }
+  };
+
+  /**
+   * Persist saved workspaces for quick reloads across sessions.
+   * Failure is non-fatal because the UI should keep working without persistence.
+   */
+  const persistPresets = (presets) => {
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
+    } catch (error) {
+      recordLog(LEVELS.ERROR, "Failed to persist saved workspaces", {
+        error: error.message,
+      });
+    }
+  };
+
+  /**
+   * Read the most recent editor draft from localStorage.
+   * Drafts are optional, so failures are treated as recoverable warnings.
+   */
+  const readDraftFromStorage = () => {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      return parsed;
+    } catch (error) {
+      recordLog(LEVELS.WARN, "Failed to parse editor draft", {
+        error: error.message,
+      });
+      return null;
+    }
+  };
+
+  /**
+   * Persist a draft payload so users can recover work after refreshes.
+   * Uses a debounce to avoid writing to storage on every keystroke.
+   */
+  const scheduleDraftSave = (draftPayload) => {
+    if (typeof localStorage === "undefined") return;
+    if (draftSaveTimeoutId) {
+      clearTimeout(draftSaveTimeoutId);
+    }
+    draftSaveTimeoutId = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+        recordLog(LEVELS.INFO, "Auto-saved editor draft", {
+          updatedAt: draftPayload.updatedAt,
+        });
+        update((state) => ({ ...state, draft: draftPayload }));
+      } catch (error) {
+        recordLog(LEVELS.ERROR, "Failed to persist editor draft", {
+          error: error.message,
+        });
+      }
+    }, DRAFT_SAVE_DELAY_MS);
+  };
+
+  const clearDraftStorage = () => {
+    if (typeof localStorage === "undefined") return;
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+  };
 
   const normalizeHistoryEntry = (entry) => ({
-    id: entry.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`),
+    id:
+      entry.id ||
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}`),
     timestamp: entry.timestamp || new Date().toISOString(),
     endpoint: entry.endpoint ?? "",
     query: entry.query ?? "",
@@ -534,14 +967,17 @@ function createGraphQLStore() {
     statusText: entry.statusText,
     error: entry.error,
     pinned: Boolean(entry.pinned),
-  })
+  });
 
   const addHistoryEntry = (entry) => {
     update((state) => ({
       ...state,
-      history: [normalizeHistoryEntry(entry), ...state.history].slice(0, HISTORY_LIMIT),
-    }))
-  }
+      history: [normalizeHistoryEntry(entry), ...state.history].slice(
+        0,
+        HISTORY_LIMIT,
+      ),
+    }));
+  };
 
   /**
    * Persist a structured log entry in the store and emit it to the console.
@@ -549,20 +985,34 @@ function createGraphQLStore() {
    */
   const recordLog = (level, message, context = {}) => {
     const entry = {
-      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
+      id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}`,
       level,
       message,
       timestamp: new Date().toISOString(),
       context,
-    }
+    };
 
-    logEvent(level, message, context)
+    logEvent(level, message, context);
 
     update((state) => ({
       ...state,
       logs: [...(state.logs ?? []), entry].slice(-LOG_LIMIT),
-    }))
-  }
+    }));
+  };
+
+  /**
+   * Build a lightweight draft payload from editor state.
+   * Keeping the payload minimal reduces localStorage usage.
+   */
+  const buildDraftPayload = (state) => ({
+    endpoint: state.endpoint,
+    query: state.query,
+    variables: state.variables,
+    updatedAt: new Date().toISOString(),
+  });
 
   return {
     subscribe,
@@ -570,45 +1020,45 @@ function createGraphQLStore() {
     update,
 
     isValidField: (typeName, fieldName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return true // Allow if no schema loaded
+      const currentState = get(store);
+      if (!currentState.schema) return true; // Allow if no schema loaded
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      if (!type || !type.fields) return false
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      if (!type || !type.fields) return false;
 
-      return type.fields.some((f) => f.name === fieldName)
+      return type.fields.some((f) => f.name === fieldName);
     },
 
     isValidArgument: (typeName, fieldName, argName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return true // Allow if no schema loaded
+      const currentState = get(store);
+      if (!currentState.schema) return true; // Allow if no schema loaded
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      if (!type || !type.fields) return false
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      if (!type || !type.fields) return false;
 
-      const field = type.fields.find((f) => f.name === fieldName)
-      if (!field || !field.args) return false
+      const field = type.fields.find((f) => f.name === fieldName);
+      if (!field || !field.args) return false;
 
-      return field.args.some((a) => a.name === argName)
+      return field.args.some((a) => a.name === argName);
     },
 
     getValidFieldsForType: (typeName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return []
+      const currentState = get(store);
+      if (!currentState.schema) return [];
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      return type ? type.fields || [] : []
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      return type ? type.fields || [] : [];
     },
 
     getValidArgsForField: (typeName, fieldName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return []
+      const currentState = get(store);
+      if (!currentState.schema) return [];
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      if (!type || !type.fields) return []
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      if (!type || !type.fields) return [];
 
-      const field = type.fields.find((f) => f.name === fieldName)
-      return field ? field.args || [] : []
+      const field = type.fields.find((f) => f.name === fieldName);
+      return field ? field.args || [] : [];
     },
 
     addOperation: (operationType = "query") => {
@@ -618,26 +1068,31 @@ function createGraphQLStore() {
           name: `My${operationType.charAt(0).toUpperCase() + operationType.slice(1)}`,
           fields: [],
           variables: [],
-        }
+        };
 
-        const newOperations = [...state.queryStructure.operations, newOperation]
+        const newOperations = [
+          ...state.queryStructure.operations,
+          newOperation,
+        ];
         const newStructure = {
           ...state.queryStructure,
           operations: newOperations,
           activeOperationIndex: newOperations.length - 1,
-        }
+        };
 
         return {
           ...state,
           queryStructure: newStructure,
           query: buildQueryFromStructure(newStructure),
-        }
-      })
+        };
+      });
     },
 
     removeOperation: (index) => {
       update((state) => {
-        const newOperations = state.queryStructure.operations.filter((_, i) => i !== index)
+        const newOperations = state.queryStructure.operations.filter(
+          (_, i) => i !== index,
+        );
         if (newOperations.length === 0) {
           // Always keep at least one operation
           newOperations.push({
@@ -645,22 +1100,25 @@ function createGraphQLStore() {
             name: "MyQuery",
             fields: [],
             variables: [],
-          })
+          });
         }
 
-        const newActiveIndex = Math.min(state.queryStructure.activeOperationIndex, newOperations.length - 1)
+        const newActiveIndex = Math.min(
+          state.queryStructure.activeOperationIndex,
+          newOperations.length - 1,
+        );
         const newStructure = {
           ...state.queryStructure,
           operations: newOperations,
           activeOperationIndex: newActiveIndex,
-        }
+        };
 
         return {
           ...state,
           queryStructure: newStructure,
           query: buildQueryFromStructure(newStructure),
-        }
-      })
+        };
+      });
     },
 
     setActiveOperation: (index) => {
@@ -670,84 +1128,88 @@ function createGraphQLStore() {
           ...state.queryStructure,
           activeOperationIndex: index,
         },
-      }))
+      }));
     },
 
     getCurrentOperation: () => {
-      const currentState = get(store)
-      return currentState.queryStructure.operations[currentState.queryStructure.activeOperationIndex]
+      const currentState = get(store);
+      return currentState.queryStructure.operations[
+        currentState.queryStructure.activeOperationIndex
+      ];
     },
 
     updateQueryStructure: (newStructure) => {
       update((state) => {
-        const newQuery = buildQueryFromStructure(newStructure)
+        const newQuery = buildQueryFromStructure(newStructure);
         return {
           ...state,
           queryStructure: newStructure,
           query: newQuery,
-        }
-      })
+        };
+      });
     },
 
     updateCurrentOperation: (updatedOperation) => {
       update((state) => {
-        const newOperations = [...state.queryStructure.operations]
-        newOperations[state.queryStructure.activeOperationIndex] = updatedOperation
+        const newOperations = [...state.queryStructure.operations];
+        newOperations[state.queryStructure.activeOperationIndex] =
+          updatedOperation;
 
         const newStructure = {
           ...state.queryStructure,
           operations: newOperations,
-        }
+        };
 
         return {
           ...state,
           queryStructure: newStructure,
           query: buildQueryFromStructure(newStructure),
-        }
-      })
+        };
+      });
     },
 
     loadDemoSchema: (schemaKey = "blog") => {
-      const selectedSchema = DEMO_SCHEMAS[schemaKey]
+      const selectedSchema = DEMO_SCHEMAS[schemaKey];
       if (selectedSchema) {
-        recordLog(LEVELS.INFO, "Loaded demo schema", { schemaKey })
+        recordLog(LEVELS.INFO, "Loaded demo schema", { schemaKey });
         update((state) => ({
           ...state,
           schema: selectedSchema.schema,
           currentSchemaKey: schemaKey,
           endpoint: `demo://${schemaKey}`,
-        }))
+        }));
       }
     },
 
     addFieldToQuery: (fieldPath, fieldName, args = []) => {
-
       update((state) => {
-        const newStructure = { ...state.queryStructure }
+        const newStructure = { ...state.queryStructure };
 
         if (fieldPath.length === 0) {
           // Adding to root level
-          const existingField = newStructure.operations[newStructure.activeOperationIndex].fields.find(
-            (f) => f.name === fieldName,
-          )
+          const existingField = newStructure.operations[
+            newStructure.activeOperationIndex
+          ].fields.find((f) => f.name === fieldName);
           if (!existingField) {
-            newStructure.operations[newStructure.activeOperationIndex].fields.push({
+            newStructure.operations[
+              newStructure.activeOperationIndex
+            ].fields.push({
               name: fieldName,
               args: args,
               fields: [],
-            })
+            });
           }
         } else {
           // Adding to nested level
           const addToNestedField = (fields, path, depth = 0) => {
-            if (depth >= path.length) return
+            if (depth >= path.length) return;
 
-            const currentFieldName = path[depth]
-            let field = fields.find((f) => f.name === currentFieldName)
+            const currentFieldName = path[depth];
+            let field = fields.find((f) => f.name === currentFieldName);
 
             if (!field) {
-              field = { name: currentFieldName, args: [], fields: [] }
-              fields.push(field)
+              field = { name: currentFieldName, args: [], fields: [] };
+              fields.push(field);
             }
 
             if (depth === path.length - 1) {
@@ -757,114 +1219,140 @@ function createGraphQLStore() {
                   name: fieldName,
                   args: args,
                   fields: [],
-                })
+                });
               }
             } else {
               // Continue deeper
-              addToNestedField(field.fields, path, depth + 1)
+              addToNestedField(field.fields, path, depth + 1);
             }
-          }
+          };
 
-          addToNestedField(newStructure.operations[newStructure.activeOperationIndex].fields, fieldPath)
+          addToNestedField(
+            newStructure.operations[newStructure.activeOperationIndex].fields,
+            fieldPath,
+          );
         }
 
-        const newQuery = buildQueryFromStructure(newStructure)
+        const newQuery = buildQueryFromStructure(newStructure);
 
         return {
           ...state,
           queryStructure: newStructure,
           query: newQuery,
-        }
-      })
+        };
+      });
     },
 
     removeFieldFromQuery: (fieldPath, fieldName) => {
-
       update((state) => {
-        const newStructure = { ...state.queryStructure }
+        const newStructure = { ...state.queryStructure };
 
         if (fieldPath.length === 0) {
           // Removing from root level
-          newStructure.operations[newStructure.activeOperationIndex].fields = newStructure.operations[
-            newStructure.activeOperationIndex
-          ].fields.filter((f) => f.name !== fieldName)
+          newStructure.operations[newStructure.activeOperationIndex].fields =
+            newStructure.operations[
+              newStructure.activeOperationIndex
+            ].fields.filter((f) => f.name !== fieldName);
         } else {
           // Removing from nested level
           const removeFromNestedField = (fields, path, depth = 0) => {
-            if (depth >= path.length) return
+            if (depth >= path.length) return;
 
-            const currentFieldName = path[depth]
-            const field = fields.find((f) => f.name === currentFieldName)
+            const currentFieldName = path[depth];
+            const field = fields.find((f) => f.name === currentFieldName);
 
             if (field) {
               if (depth === path.length - 1) {
                 // Remove the field here
-                field.fields = field.fields.filter((f) => f.name !== fieldName)
+                field.fields = field.fields.filter((f) => f.name !== fieldName);
               } else {
                 // Continue deeper
-                removeFromNestedField(field.fields, path, depth + 1)
+                removeFromNestedField(field.fields, path, depth + 1);
               }
             }
-          }
+          };
 
-          removeFromNestedField(newStructure.operations[newStructure.activeOperationIndex].fields, fieldPath)
+          removeFromNestedField(
+            newStructure.operations[newStructure.activeOperationIndex].fields,
+            fieldPath,
+          );
         }
 
-        const newQuery = buildQueryFromStructure(newStructure)
+        const newQuery = buildQueryFromStructure(newStructure);
 
         return {
           ...state,
           queryStructure: newStructure,
           query: newQuery,
-        }
-      })
+        };
+      });
     },
 
     updateQuery: (newQuery) => {
       update((state) => {
-        const newState = { ...state, query: newQuery }
-        newState.queryStructure = parseQuery(newQuery)
-        return newState
-      })
+        const newState = { ...state, query: newQuery };
+        newState.queryStructure = parseQuery(newQuery);
+        scheduleDraftSave(buildDraftPayload(newState));
+        return newState;
+      });
+    },
+
+    updateEndpoint: (newEndpoint) => {
+      update((state) => {
+        const nextState = { ...state, endpoint: newEndpoint };
+        scheduleDraftSave(buildDraftPayload(nextState));
+        return nextState;
+      });
     },
 
     updateVariables: (newVariables) => {
-      update((state) => ({ ...state, variables: newVariables }))
+      update((state) => {
+        const nextState = { ...state, variables: newVariables };
+        scheduleDraftSave(buildDraftPayload(nextState));
+        return nextState;
+      });
     },
 
     setRequestTimeoutMs: (timeoutMs) => {
-      const normalizedTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.round(timeoutMs) : 0
-      recordLog(LEVELS.INFO, "Updated request timeout", { timeoutMs: normalizedTimeout })
-      update((state) => ({ ...state, requestTimeoutMs: normalizedTimeout }))
+      const normalizedTimeout =
+        Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.round(timeoutMs) : 0;
+      recordLog(LEVELS.INFO, "Updated request timeout", {
+        timeoutMs: normalizedTimeout,
+      });
+      update((state) => ({ ...state, requestTimeoutMs: normalizedTimeout }));
     },
 
     cancelActiveRequest: () => {
       if (!activeController) {
-        recordLog(LEVELS.WARN, "Cancel requested with no active request")
-        return
+        recordLog(LEVELS.WARN, "Cancel requested with no active request");
+        return;
       }
-      activeController.abort("user-cancelled")
-      recordLog(LEVELS.WARN, "User cancelled active request")
+      activeController.abort("user-cancelled");
+      recordLog(LEVELS.WARN, "User cancelled active request");
     },
 
     addHistoryEntry,
 
     clearHistory: () => {
-      recordLog(LEVELS.INFO, "Cleared query history")
-      update((state) => ({ ...state, history: [] }))
+      recordLog(LEVELS.INFO, "Cleared query history");
+      update((state) => ({ ...state, history: [] }));
     },
 
     importHistory: (entries = []) => {
-      recordLog(LEVELS.INFO, "Imported query history entries", { count: entries.length })
+      recordLog(LEVELS.INFO, "Imported query history entries", {
+        count: entries.length,
+      });
       update((state) => {
-        const normalized = entries.map(normalizeHistoryEntry)
-        const existing = state.history ?? []
-        const merged = [...normalized, ...existing]
+        const normalized = entries.map(normalizeHistoryEntry);
+        const existing = state.history ?? [];
+        const merged = [...normalized, ...existing];
         const deduped = Array.from(
-          new Map([...merged].reverse().map((entry) => [entry.id, entry])).values(),
-        ).reverse()
-        return { ...state, history: deduped.slice(0, HISTORY_LIMIT) }
-      })
+          new Map(
+            [...merged].reverse().map((entry) => [entry.id, entry]),
+          ).values(),
+        ).reverse();
+        return { ...state, history: deduped.slice(0, HISTORY_LIMIT) };
+      });
     },
 
     toggleHistoryPin: (entryId) => {
@@ -873,64 +1361,195 @@ function createGraphQLStore() {
         history: state.history.map((entry) =>
           entry.id === entryId ? { ...entry, pinned: !entry.pinned } : entry,
         ),
-      }))
+      }));
     },
 
     removeHistoryEntry: (entryId) => {
       update((state) => ({
         ...state,
         history: state.history.filter((entry) => entry.id !== entryId),
-      }))
+      }));
     },
 
     clearUnpinnedHistory: () => {
-      recordLog(LEVELS.INFO, "Cleared unpinned history entries")
+      recordLog(LEVELS.INFO, "Cleared unpinned history entries");
       update((state) => ({
         ...state,
         history: state.history.filter((entry) => entry.pinned),
-      }))
+      }));
     },
 
     clearResults: () => {
-      recordLog(LEVELS.INFO, "Cleared results panel")
+      recordLog(LEVELS.INFO, "Cleared results panel");
       update((state) => ({
         ...state,
         results: null,
         error: null,
         loading: false,
         lastExecution: null,
-      }))
+      }));
     },
 
     loadHistoryEntry: (entry) => {
-      recordLog(LEVELS.INFO, "Loaded history entry into editor", { entryId: entry?.id })
+      recordLog(LEVELS.INFO, "Loaded history entry into editor", {
+        entryId: entry?.id,
+      });
+      update((state) => {
+        const nextState = {
+          ...state,
+          query: entry.query,
+          variables: entry.variables,
+          endpoint: entry.endpoint,
+          queryStructure: parseQuery(entry.query),
+          error: null,
+        };
+        scheduleDraftSave(buildDraftPayload(nextState));
+        return nextState;
+      });
+    },
+
+    loadDraft: () => {
+      const draft = readDraftFromStorage();
+      recordLog(LEVELS.INFO, "Loaded editor draft", {
+        hasDraft: Boolean(draft),
+      });
+      update((state) => ({ ...state, draft }));
+    },
+
+    applyDraft: () => {
+      const draft = readDraftFromStorage();
+      if (!draft) {
+        recordLog(LEVELS.WARN, "No editor draft found to apply");
+        return;
+      }
+      recordLog(LEVELS.INFO, "Applied editor draft", {
+        updatedAt: draft.updatedAt,
+      });
       update((state) => ({
         ...state,
-        query: entry.query,
-        variables: entry.variables,
-        endpoint: entry.endpoint,
-        queryStructure: parseQuery(entry.query),
+        endpoint: draft.endpoint ?? state.endpoint,
+        query: draft.query ?? state.query,
+        variables: draft.variables ?? state.variables,
+        queryStructure: parseQuery(draft.query ?? state.query),
         error: null,
-      }))
+        draft,
+      }));
+    },
+
+    clearDraft: () => {
+      recordLog(LEVELS.INFO, "Cleared editor draft");
+      clearDraftStorage();
+      update((state) => ({ ...state, draft: null }));
+    },
+
+    loadSavedPresets: () => {
+      const presets = readPresetsFromStorage();
+      recordLog(LEVELS.INFO, "Loaded saved workspaces", {
+        count: presets.length,
+      });
+      update((state) => ({ ...state, savedPresets: presets }));
+    },
+
+    savePreset: (name) => {
+      if (!name) {
+        recordLog(LEVELS.WARN, "Skipped saving workspace without a name");
+        return;
+      }
+      update((state) => {
+        // Upsert by name so teams can refresh an existing workspace without duplicates.
+        const existingIndex = state.savedPresets.findIndex(
+          (preset) => preset.name.toLowerCase() === name.toLowerCase(),
+        );
+        const timestamp = new Date().toISOString();
+        const nextPreset = {
+          id:
+            existingIndex >= 0
+              ? state.savedPresets[existingIndex].id
+              : typeof crypto !== "undefined" && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}`,
+          name,
+          endpoint: state.endpoint,
+          query: state.query,
+          variables: state.variables,
+          createdAt:
+            existingIndex >= 0
+              ? state.savedPresets[existingIndex].createdAt
+              : timestamp,
+          updatedAt: timestamp,
+        };
+
+        const nextPresets = [...state.savedPresets];
+        if (existingIndex >= 0) {
+          nextPresets[existingIndex] = nextPreset;
+        } else {
+          nextPresets.unshift(nextPreset);
+        }
+
+        recordLog(LEVELS.INFO, "Saved workspace", {
+          name,
+          updatedExisting: existingIndex >= 0,
+        });
+        persistPresets(nextPresets);
+        return { ...state, savedPresets: nextPresets };
+      });
+    },
+
+    deletePreset: (presetId) => {
+      update((state) => {
+        const nextPresets = state.savedPresets.filter(
+          (preset) => preset.id !== presetId,
+        );
+        recordLog(LEVELS.INFO, "Deleted workspace", { presetId });
+        persistPresets(nextPresets);
+        return { ...state, savedPresets: nextPresets };
+      });
+    },
+
+    applyPreset: (preset) => {
+      if (!preset) return;
+      recordLog(LEVELS.INFO, "Applied saved workspace", {
+        presetId: preset.id,
+        name: preset.name,
+      });
+      update((state) => ({
+        ...state,
+        endpoint: preset.endpoint ?? state.endpoint,
+        query: preset.query ?? state.query,
+        variables: preset.variables ?? state.variables,
+        queryStructure: parseQuery(preset.query ?? state.query),
+        error: null,
+      }));
+      scheduleDraftSave(
+        buildDraftPayload({
+          endpoint: preset.endpoint,
+          query: preset.query,
+          variables: preset.variables,
+        }),
+      );
     },
 
     getState: () => get(store),
 
     resetDefaults: () => {
-      update((state) => ({
-        ...state,
-        query: DEFAULT_QUERY,
-        variables: DEFAULT_VARIABLES,
-        results: null,
-        error: null,
-        loading: false,
-        queryStructure: parseQuery(DEFAULT_QUERY),
-      }))
+      update((state) => {
+        const nextState = {
+          ...state,
+          query: DEFAULT_QUERY,
+          variables: DEFAULT_VARIABLES,
+          results: null,
+          error: null,
+          loading: false,
+          queryStructure: parseQuery(DEFAULT_QUERY),
+        };
+        scheduleDraftSave(buildDraftPayload(nextState));
+        return nextState;
+      });
     },
 
     clearLogs: () => {
-      recordLog(LEVELS.INFO, "Cleared activity logs")
-      update((state) => ({ ...state, logs: [] }))
+      recordLog(LEVELS.INFO, "Cleared activity logs");
+      update((state) => ({ ...state, logs: [] }));
     },
 
     /**
@@ -938,15 +1557,20 @@ function createGraphQLStore() {
      * Timeout is applied via AbortController to ensure fetch is cancelled.
      */
     executeQuery: async () => {
-      update((state) => ({ ...state, loading: true, error: null }))
+      update((state) => ({ ...state, loading: true, error: null }));
 
-      const currentState = get(store)
-      const startedAt = Date.now()
-      const entryId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`
+      const currentState = get(store);
+      const startedAt = Date.now();
+      const entryId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}`;
 
       try {
         if (!currentState.endpoint) {
-          recordLog(LEVELS.WARN, "Execution blocked: missing endpoint", { entryId })
+          recordLog(LEVELS.WARN, "Execution blocked: missing endpoint", {
+            entryId,
+          });
           update((state) => ({
             ...state,
             error: "Endpoint is required before executing a query.",
@@ -960,7 +1584,7 @@ function createGraphQLStore() {
               timestamp: new Date().toISOString(),
               error: "Endpoint is required before executing a query.",
             },
-          }))
+          }));
           addHistoryEntry({
             id: entryId,
             timestamp: new Date().toISOString(),
@@ -970,18 +1594,20 @@ function createGraphQLStore() {
             status: "invalid",
             durationMs: Date.now() - startedAt,
             error: "Endpoint is required before executing a query.",
-          })
-          return
+          });
+          return;
         }
 
-        let variables = {}
+        let variables = {};
         try {
-          variables = currentState.variables ? JSON.parse(currentState.variables) : {}
+          variables = currentState.variables
+            ? JSON.parse(currentState.variables)
+            : {};
         } catch (parseError) {
           recordLog(LEVELS.WARN, "Execution blocked: invalid variables JSON", {
             entryId,
             error: parseError.message,
-          })
+          });
           update((state) => ({
             ...state,
             error: `Variables JSON error: ${parseError.message}`,
@@ -995,7 +1621,7 @@ function createGraphQLStore() {
               timestamp: new Date().toISOString(),
               error: `Variables JSON error: ${parseError.message}`,
             },
-          }))
+          }));
           addHistoryEntry({
             id: entryId,
             timestamp: new Date().toISOString(),
@@ -1005,25 +1631,25 @@ function createGraphQLStore() {
             status: "invalid",
             durationMs: Date.now() - startedAt,
             error: `Variables JSON error: ${parseError.message}`,
-          })
-          return
+          });
+          return;
         }
 
         if (activeController) {
-          activeController.abort("superseded")
-          activeController = null
+          activeController.abort("superseded");
+          activeController = null;
           if (activeTimeoutId) {
-            clearTimeout(activeTimeoutId)
-            activeTimeoutId = null
+            clearTimeout(activeTimeoutId);
+            activeTimeoutId = null;
           }
         }
 
-        activeController = new AbortController()
-        const timeoutMs = currentState.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS
+        activeController = new AbortController();
+        const timeoutMs = currentState.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
         if (timeoutMs > 0) {
           activeTimeoutId = setTimeout(() => {
-            activeController?.abort("timeout")
-          }, timeoutMs)
+            activeController?.abort("timeout");
+          }, timeoutMs);
         }
 
         recordLog(LEVELS.INFO, "Executing GraphQL request", {
@@ -1031,7 +1657,7 @@ function createGraphQLStore() {
           endpoint: currentState.endpoint,
           timeoutMs,
           hasVariables: Object.keys(variables).length > 0,
-        })
+        });
 
         const response = await fetch(currentState.endpoint, {
           method: "POST",
@@ -1043,13 +1669,16 @@ function createGraphQLStore() {
             variables: variables,
           }),
           signal: activeController.signal,
-        })
+        });
 
-        const result = await response.json()
+        const result = await response.json();
 
         const errorMessages = Array.isArray(result.errors)
-          ? result.errors.map((err) => err.message).filter(Boolean).join("; ")
-          : null
+          ? result.errors
+              .map((err) => err.message)
+              .filter(Boolean)
+              .join("; ")
+          : null;
         update((state) => ({
           ...state,
           results: result,
@@ -1064,14 +1693,14 @@ function createGraphQLStore() {
             statusText: response.statusText,
             error: errorMessages,
           },
-        }))
+        }));
 
         recordLog(LEVELS.INFO, "GraphQL request completed", {
           entryId,
           status: result.errors ? "error" : "success",
           statusCode: response.status,
           durationMs: Date.now() - startedAt,
-        })
+        });
 
         addHistoryEntry({
           id: entryId,
@@ -1084,20 +1713,20 @@ function createGraphQLStore() {
           statusCode: response.status,
           statusText: response.statusText,
           error: errorMessages,
-        })
+        });
       } catch (error) {
-        const wasAborted = activeController?.signal?.aborted
-        const abortReason = activeController?.signal?.reason
-        const isTimeout = abortReason === "timeout"
+        const wasAborted = activeController?.signal?.aborted;
+        const abortReason = activeController?.signal?.reason;
+        const isTimeout = abortReason === "timeout";
         if (wasAborted) {
           const cancelMessage = isTimeout
             ? `Request timed out after ${currentState.requestTimeoutMs}ms.`
-            : "Request cancelled."
+            : "Request cancelled.";
           recordLog(LEVELS.WARN, "GraphQL request cancelled", {
             entryId,
             reason: abortReason ?? "aborted",
             durationMs: Date.now() - startedAt,
-          })
+          });
           update((state) => ({
             ...state,
             error: null,
@@ -1111,7 +1740,7 @@ function createGraphQLStore() {
               timestamp: new Date().toISOString(),
               error: cancelMessage,
             },
-          }))
+          }));
 
           addHistoryEntry({
             id: entryId,
@@ -1122,15 +1751,15 @@ function createGraphQLStore() {
             status: "cancelled",
             durationMs: Date.now() - startedAt,
             error: cancelMessage,
-          })
-          return
+          });
+          return;
         }
 
         recordLog(LEVELS.ERROR, "GraphQL request failed", {
           entryId,
           error: error.message,
           durationMs: Date.now() - startedAt,
-        })
+        });
         update((state) => ({
           ...state,
           error: error.message,
@@ -1144,7 +1773,7 @@ function createGraphQLStore() {
             timestamp: new Date().toISOString(),
             error: error.message,
           },
-        }))
+        }));
 
         addHistoryEntry({
           id: entryId,
@@ -1155,18 +1784,18 @@ function createGraphQLStore() {
           status: "error",
           durationMs: Date.now() - startedAt,
           error: error.message,
-        })
+        });
       } finally {
         if (activeTimeoutId) {
-          clearTimeout(activeTimeoutId)
-          activeTimeoutId = null
+          clearTimeout(activeTimeoutId);
+          activeTimeoutId = null;
         }
-        activeController = null
+        activeController = null;
       }
     },
 
     introspectSchema: async () => {
-      update((state) => ({ ...state, loading: true }))
+      update((state) => ({ ...state, loading: true }));
 
       const introspectionQuery = `
         query IntrospectionQuery {
@@ -1206,117 +1835,122 @@ function createGraphQLStore() {
             }
           }
         }
-      `
+      `;
 
       try {
-        const currentState = get(store)
+        const currentState = get(store);
         recordLog(LEVELS.INFO, "Running schema introspection", {
           endpoint: currentState.endpoint,
-        })
+        });
         const response = await fetch(currentState.endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ query: introspectionQuery }),
-        })
+        });
 
-        const result = await response.json()
+        const result = await response.json();
 
         recordLog(LEVELS.INFO, "Schema introspection completed", {
           endpoint: currentState.endpoint,
           typesCount: result.data?.__schema?.types?.length ?? 0,
-        })
+        });
         update((state) => ({
           ...state,
           schema: result.data.__schema,
           loading: false,
-        }))
+        }));
       } catch (error) {
         recordLog(LEVELS.ERROR, "Schema introspection failed", {
           endpoint: get(store).endpoint,
           error: error.message,
-        })
+        });
         update((state) => ({
           ...state,
           error: error.message,
           loading: false,
-        }))
+        }));
       }
     },
 
     getFieldsForType: (typeName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return []
+      const currentState = get(store);
+      if (!currentState.schema) return [];
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      return type ? type.fields || [] : []
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      return type ? type.fields || [] : [];
     },
 
     getArgsForField: (typeName, fieldName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return []
+      const currentState = get(store);
+      if (!currentState.schema) return [];
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      if (!type) return []
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      if (!type) return [];
 
-      const field = type.fields?.find((f) => f.name === fieldName)
-      return field ? field.args || [] : []
+      const field = type.fields?.find((f) => f.name === fieldName);
+      return field ? field.args || [] : [];
     },
 
     getRootQueryFields: () => {
-      const currentState = get(store)
-      if (!currentState.schema) return []
+      const currentState = get(store);
+      if (!currentState.schema) return [];
 
-      const queryType = currentState.schema.types.find((t) => t.name === "Query")
-      return queryType ? queryType.fields || [] : []
+      const queryType = currentState.schema.types.find(
+        (t) => t.name === "Query",
+      );
+      return queryType ? queryType.fields || [] : [];
     },
 
     getFieldReturnType: (typeName, fieldName) => {
-      const currentState = get(store)
-      if (!currentState.schema) return null
+      const currentState = get(store);
+      if (!currentState.schema) return null;
 
-      const type = currentState.schema.types.find((t) => t.name === typeName)
-      if (!type) return null
+      const type = currentState.schema.types.find((t) => t.name === typeName);
+      if (!type) return null;
 
-      const field = type.fields?.find((f) => f.name === fieldName)
-      if (!field) return null
+      const field = type.fields?.find((f) => f.name === fieldName);
+      if (!field) return null;
 
       // Handle list types and non-null types
-      let returnType = field.type
+      let returnType = field.type;
       if (returnType.kind === "LIST" && returnType.ofType) {
-        returnType = returnType.ofType
+        returnType = returnType.ofType;
       }
       if (returnType.kind === "NON_NULL" && returnType.ofType) {
-        returnType = returnType.ofType
+        returnType = returnType.ofType;
       }
 
-      return returnType.name
+      return returnType.name;
     },
 
     getAvailableFieldsForPath: (fieldPath) => {
-      const currentState = get(store)
-      if (!currentState.schema) return []
+      const currentState = get(store);
+      if (!currentState.schema) return [];
 
-      let currentTypeName = "Query" // Start with root query type
+      let currentTypeName = "Query"; // Start with root query type
 
       // Walk through the field path to determine the current type
       for (const pathSegment of fieldPath) {
-        const returnType = store.getFieldReturnType(currentTypeName, pathSegment)
-        if (!returnType) return []
-        currentTypeName = returnType
+        const returnType = store.getFieldReturnType(
+          currentTypeName,
+          pathSegment,
+        );
+        if (!returnType) return [];
+        currentTypeName = returnType;
       }
 
-      return store.getFieldsForType(currentTypeName)
+      return store.getFieldsForType(currentTypeName);
     },
-  }
+  };
 }
 
 // Helper function to get current store value
 function get(store) {
-  let value
-  store.subscribe((v) => (value = v))()
-  return value
+  let value;
+  store.subscribe((v) => (value = v))();
+  return value;
 }
 
-export const graphqlStore = createGraphQLStore()
+export const graphqlStore = createGraphQLStore();

@@ -6,7 +6,7 @@ const LEVELS = {
   INFO: "INFO",
   WARN: "WARN",
   ERROR: "ERROR",
-}
+};
 
 /**
  * Emit a structured log event to the console.
@@ -20,9 +20,18 @@ export function logEvent(level, message, context = {}) {
     message,
     timestamp: new Date().toISOString(),
     ...context,
+  };
+
+  if (level === LEVELS.ERROR) {
+    console.error(`[GraphQL Editor][${level}] ${message}`, payload);
+    return;
+  }
+  if (level === LEVELS.WARN) {
+    console.warn(`[GraphQL Editor][${level}] ${message}`, payload);
+    return;
   }
 
-  console.info(`[GraphQL Editor][${level}] ${message}`, payload)
+  console.info(`[GraphQL Editor][${level}] ${message}`, payload);
 }
 
-export { LEVELS }
+export { LEVELS };

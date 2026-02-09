@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+
 - Query editor reset action to restore the default query and variables.
 - Expanded GraphQL helper and store tests to cover nested parsing, history validation, and clear results logic.
 - Extracted GraphQL query helpers into a dedicated module to allow lightweight unit testing.
@@ -18,8 +19,12 @@ All notable changes to this project will be documented in this file.
 - Added history import and pinning with pinned-first sorting in the results panel.
 - Added history deletion and clear-unpinned controls plus store helpers for targeted cleanup.
 - Added JSON error feedback in the variables editor.
+- Added auto-saved editor drafts with restore/dismiss controls in the query editor.
 
 ### Fixed
+
+- Switched Tailwind config to CommonJS for better compatibility with the Vite Tailwind plugin.
+- Pointed the Vite Tailwind plugin at the CommonJS config to avoid SSR build errors.
 - Improved default query/variables handling in the GraphQL store to keep state consistent after resets.
 - Replaced dynamic Tailwind utility interpolation with inline styles in the schema field tree for reliable rendering.
 - Removed unused placeholder dependencies to prevent install failures.
