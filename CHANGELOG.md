@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Added repository-level agent guidelines in `agents.md`.
+- Added CSV export for table-mode query results in the Results panel.
+- Added a table column selector to focus on specific fields in Results table view.
+- Added a table row filter to quickly narrow results before exporting.
+- Added CSV delimiter selection and per-row JSON copy actions in Results table view.
+- Added reset-view controls and match highlighting for table filtering.
+- Added optional sticky-first-column support for wide tables.
 - Added a headers editor with JSON validation, visual management, and quick add buttons for auth/API key headers.
 - Query editor reset action to restore the default query and variables.
 - Added a Copy cURL action in the Query Editor for sharing and debugging requests.
