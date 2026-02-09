@@ -307,6 +307,21 @@ test("stores history entry for invalid variables", async () => {
   assert.equal(state.lastExecution.status, "invalid");
 });
 
+test("stores history entry for non-object variables", async () => {
+  graphqlStore.update((state) => ({
+    ...state,
+    variables: "[1, 2, 3]",
+  }));
+
+  await graphqlStore.executeQuery();
+
+  const state = graphqlStore.getState();
+  assert.equal(state.error, "Variables must be a JSON object.");
+  assert.equal(state.history[0].status, "invalid");
+  assert.equal(state.history[0].error, "Variables must be a JSON object.");
+  assert.equal(state.lastExecution.status, "invalid");
+});
+
 test("stores history entry for invalid headers", async () => {
   graphqlStore.update((state) => ({
     ...state,
@@ -383,6 +398,24 @@ test("clears results state", () => {
   assert.equal(state.error, null);
   assert.equal(state.loading, false);
   assert.equal(state.lastExecution, null);
+});
+
+test("skips loading invalid history entries", () => {
+  graphqlStore.update((state) => ({
+    ...state,
+    query: "query { keep }",
+    variables: "{}",
+    endpoint: "https://example.com/graphql",
+  }));
+
+  graphqlStore.loadHistoryEntry(null);
+
+  const state = graphqlStore.getState();
+  assert.equal(state.query, "query { keep }");
+  assert.equal(
+    state.logs[state.logs.length - 1].message,
+    "Skipped loading invalid history entry",
+  );
 });
 
 test("stores lastExecution details for successful queries", async () => {
@@ -462,6 +495,48 @@ test("importHistory deduplicates by id and respects limit", () => {
   assert.equal(
     state.history.find((entry) => entry.id === "entry-10").query,
     "query { updated }",
+  );
+});
+
+test("exports history with metadata payload", () => {
+  graphqlStore.importHistory([
+    { id: "entry-1", query: "query { one }", status: "success" },
+  ]);
+
+  const exported = graphqlStore.exportHistory();
+  const payload = JSON.parse(exported);
+
+  assert.equal(payload.version, 1);
+  assert.ok(payload.exportedAt);
+  assert.equal(payload.entries.length, 1);
+  assert.equal(payload.entries[0].id, "entry-1");
+});
+
+test("imports history from JSON payloads", () => {
+  const payload = JSON.stringify({
+    version: 1,
+    exportedAt: "2024-01-01T00:00:00.000Z",
+    entries: [{ id: "entry-1", query: "query { one }", status: "success" }],
+  });
+
+  graphqlStore.importHistoryFromJson(payload);
+
+  const state = graphqlStore.getState();
+  assert.equal(state.history.length, 1);
+  assert.equal(state.history[0].id, "entry-1");
+});
+
+test("skips importing empty history payloads", () => {
+  const logCount = graphqlStore.getState().logs.length;
+
+  graphqlStore.importHistoryFromJson("   ");
+
+  const state = graphqlStore.getState();
+  assert.equal(state.history.length, 0);
+  assert.equal(state.logs.length, logCount + 1);
+  assert.equal(
+    state.logs[state.logs.length - 1].message,
+    "Skipped importing empty history payload",
   );
 });
 

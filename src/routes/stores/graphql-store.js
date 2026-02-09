@@ -1045,6 +1045,41 @@ function createGraphQLStore() {
   };
 
   /**
+   * Merge and persist history entries with de-duplication.
+   * Shared by imports to keep behavior consistent.
+   * @param {Array<Record<string, unknown>>} entries
+   */
+  const importHistoryEntries = (entries = []) => {
+    recordLog(LEVELS.INFO, "Imported query history entries", {
+      count: entries.length,
+    });
+    update((state) => {
+      const normalized = entries.map(normalizeHistoryEntry);
+      const existing = state.history ?? [];
+      const merged = [...normalized, ...existing];
+      const deduped = Array.from(
+        new Map(
+          [...merged].reverse().map((entry) => [entry.id, entry]),
+        ).values(),
+      ).reverse();
+      const nextHistory = deduped.slice(0, HISTORY_LIMIT);
+      persistHistory(nextHistory);
+      return { ...state, history: nextHistory };
+    });
+  };
+
+  /**
+   * Build a stable history export payload with metadata for later restore.
+   * Keeping a version allows us to evolve the format without breaking imports.
+   * @param {Array<Record<string, unknown>>} historyEntries
+   */
+  const buildHistoryExportPayload = (historyEntries) => ({
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    entries: historyEntries,
+  });
+
+  /**
    * Persist a structured log entry in the store and emit it to the console.
    * Keeps the most recent LOG_LIMIT entries to avoid unbounded growth.
    */
@@ -1128,6 +1163,35 @@ function createGraphQLStore() {
       return {
         headers: null,
         error: `Headers JSON error: ${error.message}`,
+      };
+    }
+  };
+
+  /**
+   * Parse user-provided variables JSON into a plain object payload.
+   * GraphQL variables must be a JSON object, not arrays or primitives.
+   * @param {string} rawVariables
+   * @returns {{ variables: Record<string, unknown> | null, error: string | null }}
+   */
+  const parseVariablesJson = (rawVariables) => {
+    if (!rawVariables || !rawVariables.trim()) {
+      return { variables: {}, error: null };
+    }
+
+    try {
+      const parsed = JSON.parse(rawVariables);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return {
+          variables: null,
+          error: "Variables must be a JSON object.",
+        };
+      }
+
+      return { variables: parsed, error: null };
+    } catch (error) {
+      return {
+        variables: null,
+        error: `Variables JSON error: ${error.message}`,
       };
     }
   };
@@ -1493,6 +1557,20 @@ function createGraphQLStore() {
 
     addHistoryEntry,
 
+    /**
+     * Export the current query history as a JSON string with metadata.
+     * This keeps exports easy to share while remaining forward compatible.
+     */
+    exportHistory: () => {
+      const currentState = get(store);
+      const historyEntries = currentState.history ?? [];
+      const payload = buildHistoryExportPayload(historyEntries);
+      recordLog(LEVELS.INFO, "Exported query history", {
+        count: historyEntries.length,
+      });
+      return JSON.stringify(payload, null, 2);
+    },
+
     clearHistory: () => {
       recordLog(LEVELS.INFO, "Cleared query history");
       update((state) => {
@@ -1502,22 +1580,43 @@ function createGraphQLStore() {
     },
 
     importHistory: (entries = []) => {
-      recordLog(LEVELS.INFO, "Imported query history entries", {
-        count: entries.length,
-      });
-      update((state) => {
-        const normalized = entries.map(normalizeHistoryEntry);
-        const existing = state.history ?? [];
-        const merged = [...normalized, ...existing];
-        const deduped = Array.from(
-          new Map(
-            [...merged].reverse().map((entry) => [entry.id, entry]),
-          ).values(),
-        ).reverse();
-        const nextHistory = deduped.slice(0, HISTORY_LIMIT);
-        persistHistory(nextHistory);
-        return { ...state, history: nextHistory };
-      });
+      importHistoryEntries(entries);
+    },
+
+    /**
+     * Import history entries from a JSON string.
+     * Accepts raw arrays for backward compatibility or the export payload shape.
+     * @param {string} rawHistoryJson
+     */
+    importHistoryFromJson: (rawHistoryJson) => {
+      if (!rawHistoryJson || !rawHistoryJson.trim()) {
+        recordLog(LEVELS.WARN, "Skipped importing empty history payload");
+        return;
+      }
+      try {
+        const parsed = JSON.parse(rawHistoryJson);
+        const entries = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.entries)
+            ? parsed.entries
+            : null;
+
+        if (!entries) {
+          recordLog(LEVELS.WARN, "History import payload was not valid", {
+            payloadType: Array.isArray(parsed) ? "array" : typeof parsed,
+          });
+          return;
+        }
+
+        recordLog(LEVELS.INFO, "Imported history from JSON payload", {
+          count: entries.length,
+        });
+        importHistoryEntries(entries);
+      } catch (error) {
+        recordLog(LEVELS.ERROR, "Failed to parse history import payload", {
+          error: error.message,
+        });
+      }
     },
 
     toggleHistoryPin: (entryId) => {
@@ -1604,16 +1703,30 @@ function createGraphQLStore() {
     },
 
     loadHistoryEntry: (entry) => {
+      if (!entry || typeof entry !== "object") {
+        recordLog(LEVELS.WARN, "Skipped loading invalid history entry", {
+          entryType: typeof entry,
+        });
+        return;
+      }
       recordLog(LEVELS.INFO, "Loaded history entry into editor", {
         entryId: entry?.id,
       });
       update((state) => {
+        const nextQuery =
+          typeof entry.query === "string" ? entry.query : state.query;
+        const nextVariables =
+          typeof entry.variables === "string"
+            ? entry.variables
+            : state.variables;
+        const nextEndpoint =
+          typeof entry.endpoint === "string" ? entry.endpoint : state.endpoint;
         const nextState = {
           ...state,
-          query: entry.query,
-          variables: entry.variables,
-          endpoint: entry.endpoint,
-          queryStructure: parseQuery(entry.query),
+          query: nextQuery,
+          variables: nextVariables,
+          endpoint: nextEndpoint,
+          queryStructure: parseQuery(nextQuery),
           error: null,
         };
         scheduleDraftSave(buildDraftPayload(nextState));
@@ -1859,19 +1972,17 @@ function createGraphQLStore() {
           return;
         }
 
-        let variables = {};
-        try {
-          variables = currentState.variables
-            ? JSON.parse(currentState.variables)
-            : {};
-        } catch (parseError) {
+        const { variables, error: variablesError } = parseVariablesJson(
+          currentState.variables,
+        );
+        if (variablesError) {
           recordLog(LEVELS.WARN, "Execution blocked: invalid variables JSON", {
             entryId,
-            error: parseError.message,
+            error: variablesError,
           });
           finalizeExecution({
             status: "invalid",
-            errorMessage: `Variables JSON error: ${parseError.message}`,
+            errorMessage: variablesError,
           });
           return;
         }
@@ -1927,7 +2038,7 @@ function createGraphQLStore() {
             timeoutMs,
             attempt: attempt + 1,
             maxAttempts,
-            hasVariables: Object.keys(variables).length > 0,
+            hasVariables: Object.keys(variables ?? {}).length > 0,
           });
 
           try {
