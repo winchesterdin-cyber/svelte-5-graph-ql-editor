@@ -12,6 +12,11 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **Headers Editor** for reusable Authorization/API key headers with JSON validation.
 - **Schema Explorer** to introspect or load demo schemas.
 - **Results Panel** with formatted/raw/table views, response metadata, quick copy/download, and clearing.
+- **Table CSV export** for saving tabular results in spreadsheet-friendly format.
+- **Table column selector** to focus on specific fields before exporting or reviewing data.
+- **Table row filtering** to quickly narrow down large responses before export.
+- **Table row actions** to copy individual rows as JSON.
+- **CSV delimiter selector** for comma/semicolon/tab exports.
 - **Request Controls** with configurable timeouts, retries, and cancel support for long-running requests.
 - **Activity Log** to review structured request events with INFO/WARN/ERROR levels.
 - **Query History** to reload, re-run, pin, delete, copy, import, or export past queries/variables.
@@ -54,6 +59,18 @@ npm test         # run Node-based unit tests
 - Use "Clear unpinned" to trim history while keeping your pinned highlights.
 - Clear the Results panel to remove outdated data or error messages between runs.
 - Review response metadata (payload size, top-level data keys) to sanity-check results quickly.
+- Export table-mode results as CSV for quick analysis in spreadsheets or BI tools.
+- Use the column selector in table mode to hide noisy fields before exporting or scanning results.
+- Use the table filter to narrow rows when hunting for specific values in large datasets.
+- Use the "Reset view" shortcut in table mode to clear filters, restore columns, and reset layout.
+- Pick a delimiter (comma/semicolon/tab) that matches your spreadsheet locale before exporting.
+- Use "Copy row" for quick, single-row JSON sharing.
+
+### Table Mode Tips
+
+- Use the filter bar to highlight matches in visible columns while scanning results.
+- Enable the sticky first column when tables are wide and you want key identifiers to stay in view.
+- If the table feels overwhelming, reset the view to restore all columns and clear filters.
 - Variables must be valid JSON objects; arrays or primitives are rejected to keep request payloads predictable.
 - History exports include metadata (version + timestamp) and can be re-imported from JSON payloads.
 - Use the timeout control in the Query Editor to cancel long-running requests (set to `0` to disable timeouts).

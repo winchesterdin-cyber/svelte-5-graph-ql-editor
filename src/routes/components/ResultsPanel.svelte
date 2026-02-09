@@ -1,5 +1,13 @@
 <script>
   import { graphqlStore } from '../stores/graphql-store.js';
+  import { LEVELS } from '../stores/logger.js';
+  import {
+    buildColumnOrder,
+    buildCsv,
+    filterTableRows,
+    formatCellValue,
+    getHighlightParts
+  } from './table-utils.js';
 
 
   let viewMode = $state('formatted'); // 'formatted', 'raw', 'table'
@@ -10,11 +18,74 @@
   let logLevelFilter = $state('all');
   let editingNoteId = $state(null);
   let noteDrafts = $state({});
+  let showColumnManager = $state(false);
+  let visibleColumns = $state([]);
+  let tableFilter = $state('');
+  let lastLoggedFilter = $state('');
+  let filterLogTimeout;
+  let stickyFirstColumn = $state(false);
+  let csvDelimiter = $state(',');
 
   // Subscribe to store changes
   graphqlStore.subscribe(state => {
     storeState = state;
     tableData = renderTableView(state.results);
+  });
+
+  const tableColumnOrder = $derived(() => buildColumnOrder(tableData ?? []));
+  const tableColumns = $derived(() => tableColumnOrder);
+  const firstVisibleColumn = $derived(() => {
+    const visible = tableColumnOrder.filter((column) =>
+      visibleColumns.includes(column),
+    );
+    return visible[0] ?? null;
+  });
+
+  $effect(() => {
+    if (!tableColumns.length) {
+      visibleColumns = [];
+      showColumnManager = false;
+      tableFilter = '';
+      return;
+    }
+    const nextColumns = tableColumns;
+    const shouldResetSelection =
+      visibleColumns.length === 0 ||
+      !visibleColumns.every((column) => nextColumns.includes(column));
+    if (shouldResetSelection) {
+      visibleColumns = [...nextColumns];
+    }
+  });
+
+  const filteredTableRows = $derived(() =>
+    filterTableRows(tableData, tableFilter, visibleColumns),
+  );
+
+  $effect(() => {
+    if (tableFilter === lastLoggedFilter) return;
+    if (filterLogTimeout) clearTimeout(filterLogTimeout);
+    const nextFilter = tableFilter;
+    filterLogTimeout = setTimeout(() => {
+      lastLoggedFilter = nextFilter;
+      const rowCount = Array.isArray(tableData) ? tableData.length : 0;
+      const filteredCount = Array.isArray(filteredTableRows)
+        ? filteredTableRows.length
+        : 0;
+      const isFilterApplied = Boolean(nextFilter);
+      const shouldWarn = isFilterApplied && filteredCount === 0;
+      graphqlStore.logUiEvent(
+        shouldWarn ? LEVELS.WARN : LEVELS.INFO,
+        isFilterApplied ? 'Applied table filter' : 'Cleared table filter',
+        {
+          filter: nextFilter,
+          rowCount,
+          filteredCount,
+        },
+      );
+    }, 400);
+    return () => {
+      if (filterLogTimeout) clearTimeout(filterLogTimeout);
+    };
   });
 
   const filteredHistory = $derived(() => {
@@ -77,9 +148,24 @@
     return `Executing query (attempt ${retryAttempt + 1} of ${maxAttempts})...`;
   });
 
-  function copyResults() {
-    if (storeState.results) {
-      navigator.clipboard?.writeText(JSON.stringify(storeState.results, null, 2));
+  async function copyResults() {
+    if (!storeState.results) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Copy results skipped: no data available');
+      return;
+    }
+    if (!navigator.clipboard?.writeText) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Copy results skipped: clipboard unavailable');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(storeState.results, null, 2));
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied query results to clipboard', {
+        byteSize: JSON.stringify(storeState.results).length,
+      });
+    } catch (error) {
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Failed to copy query results', {
+        error: error?.message ?? 'Unknown clipboard error',
+      });
     }
   }
 
@@ -92,11 +178,131 @@
       a.download = 'graphql-results.json';
       a.click();
       URL.revokeObjectURL(url);
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Downloaded query results as JSON', {
+        byteSize: blob.size,
+      });
+    } else {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Download results skipped: no data available');
+    }
+  }
+
+  /**
+   * Calculate a stable column order for table rendering + CSV export.
+   * We preserve the first row's keys first, then append any missing keys.
+   * @param {Array<Record<string, unknown>>} rows
+   */
+  function downloadTableCsv() {
+    if (!Array.isArray(tableData)) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'CSV export skipped: no table data available');
+      return;
+    }
+    const rowsToExport = filteredTableRows ?? [];
+    if (rowsToExport.length === 0) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'CSV export skipped: table data is empty');
+      return;
+    }
+    const csv = buildCsv(rowsToExport, visibleColumns, csvDelimiter);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'graphql-results.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Downloaded table data as CSV', {
+      rows: rowsToExport.length,
+      columns: visibleColumns.length,
+      delimiter: csvDelimiter === '\t' ? 'tab' : csvDelimiter,
+      byteSize: blob.size,
+    });
+  }
+
+  function toggleColumnManager() {
+    showColumnManager = !showColumnManager;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Toggled column manager', {
+      open: showColumnManager,
+    });
+  }
+
+  function toggleColumn(column) {
+    if (!column) return;
+    const isSelected = visibleColumns.includes(column);
+    if (isSelected && visibleColumns.length === 1) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Column toggle blocked: at least one column required', {
+        column,
+      });
+      return;
+    }
+    visibleColumns = isSelected
+      ? visibleColumns.filter((item) => item !== column)
+      : [...visibleColumns, column];
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Toggled table column visibility', {
+      column,
+      visible: !isSelected,
+      visibleCount: visibleColumns.length,
+    });
+  }
+
+  function showAllColumns() {
+    if (!tableColumns.length) return;
+    visibleColumns = [...tableColumns];
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Reset table columns to show all', {
+      columnCount: tableColumns.length,
+    });
+  }
+
+  function clearTableFilter() {
+    tableFilter = '';
+  }
+
+  /**
+   * Reset table-specific controls to their default, fully visible state.
+   * This gives users a quick escape hatch if the view becomes too filtered.
+   */
+  function resetTableView() {
+    showAllColumns();
+    tableFilter = '';
+    showColumnManager = false;
+    stickyFirstColumn = false;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Reset table view to defaults');
+  }
+
+  function toggleStickyFirstColumn() {
+    stickyFirstColumn = !stickyFirstColumn;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Toggled sticky first column', {
+      enabled: stickyFirstColumn,
+    });
+  }
+
+  function handleDelimiterChange(event) {
+    const nextDelimiter = event.target.value;
+    csvDelimiter = nextDelimiter;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Updated CSV delimiter', {
+      delimiter: nextDelimiter === '\t' ? 'tab' : nextDelimiter,
+    });
+  }
+
+  async function copyRowAsJson(row) {
+    if (!row) return;
+    if (!navigator.clipboard?.writeText) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Copy row skipped: clipboard unavailable');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(row, null, 2));
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied table row as JSON', {
+        columnCount: Object.keys(row).length,
+      });
+    } catch (error) {
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Failed to copy table row', {
+        error: error?.message ?? 'Unknown clipboard error',
+      });
     }
   }
 
   function clearResults() {
     graphqlStore.clearResults();
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Cleared query results panel');
   }
 
   function restoreHistory(entry) {
@@ -129,6 +335,10 @@
     a.download = 'graphql-history.json';
     a.click();
     URL.revokeObjectURL(url);
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Downloaded query history JSON', {
+      entryCount: storeState.history.length,
+      byteSize: blob.size,
+    });
   }
 
   async function importHistory(event) {
@@ -147,20 +357,59 @@
 
   function togglePinned(entry) {
     graphqlStore.toggleHistoryPin(entry.id);
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Toggled history pin', {
+      entryId: entry.id,
+      pinned: !entry.pinned,
+    });
   }
 
   function removeHistoryEntry(entry) {
     graphqlStore.removeHistoryEntry(entry.id);
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Removed history entry', {
+      entryId: entry.id,
+    });
   }
 
-  function copyHistoryQuery(entry) {
+  async function copyHistoryQuery(entry) {
     if (!entry?.query) return;
-    navigator.clipboard?.writeText(entry.query);
+    if (!navigator.clipboard?.writeText) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Copy history query skipped: clipboard unavailable', {
+        entryId: entry.id,
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(entry.query);
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied history query', {
+        entryId: entry.id,
+      });
+    } catch (error) {
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Failed to copy history query', {
+        entryId: entry.id,
+        error: error?.message ?? 'Unknown clipboard error',
+      });
+    }
   }
 
-  function copyHistoryVariables(entry) {
+  async function copyHistoryVariables(entry) {
     if (!entry?.variables) return;
-    navigator.clipboard?.writeText(entry.variables);
+    if (!navigator.clipboard?.writeText) {
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Copy history variables skipped: clipboard unavailable', {
+        entryId: entry.id,
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(entry.variables);
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied history variables', {
+        entryId: entry.id,
+      });
+    } catch (error) {
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Failed to copy history variables', {
+        entryId: entry.id,
+        error: error?.message ?? 'Unknown clipboard error',
+      });
+    }
   }
 
   /**
@@ -188,6 +437,10 @@
     const draft = noteDrafts[entry.id] ?? '';
     graphqlStore.updateHistoryNote(entry.id, draft);
     editingNoteId = null;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Saved history note', {
+      entryId: entry.id,
+      noteLength: draft.length,
+    });
   }
 
   function cancelNoteEdit() {
@@ -195,7 +448,6 @@
   }
 
   function renderTableView(data) {
-    
     if (!data || typeof data !== 'object') return null;
     
     // Handle GraphQL response structure
@@ -253,6 +505,30 @@
         >
           Download
         </button>
+        {#if tableData}
+          <button
+            onclick={downloadTableCsv}
+            class="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600"
+          >
+            CSV
+          </button>
+          <select
+            value={csvDelimiter}
+            onchange={handleDelimiterChange}
+            class="px-2 py-1 text-sm border border-gray-200 rounded"
+            aria-label="CSV delimiter"
+          >
+            <option value=",">Comma</option>
+            <option value=";">Semicolon</option>
+            <option value="\t">Tab</option>
+          </select>
+          <button
+            onclick={toggleColumnManager}
+            class="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded text-sm hover:bg-gray-50"
+          >
+            Columns
+          </button>
+        {/if}
       {/if}
       {#if storeState.results || storeState.error}
         <button
@@ -291,28 +567,122 @@
           <pre class="text-sm font-mono whitespace-pre-wrap">{JSON.stringify(storeState.results)}</pre>
         </div>
       {:else if viewMode === 'table' && tableData}
-        <div class="h-full overflow-auto">
-          <table class="w-full text-sm">
-            <thead class="bg-gray-50 sticky top-0">
-              <tr>
-                {#each Object.keys(tableData[0] || {}) as header}
-                  <th class="px-4 py-2 text-left font-medium text-gray-900 border-b">{header}</th>
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#each tableData as row, index}
-                <tr class="{index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
-                  {#each Object.values(row) as cell}
-                    <td class="px-4 py-2 border-b">
-                      {typeof cell === 'object' ? JSON.stringify(cell) : cell}
-                    </td>
+        {#if tableData.length === 0}
+          <div class="h-full flex items-center justify-center text-sm text-gray-500">
+            No rows available for table view.
+          </div>
+        {:else if filteredTableRows && filteredTableRows.length === 0}
+          <div class="h-full flex items-center justify-center text-sm text-gray-500">
+            No rows match the current filter.
+          </div>
+        {:else}
+          <div class="h-full overflow-auto">
+            {#if tableColumns.length}
+              <div class="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-600">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span>Showing {visibleColumns.length} of {tableColumns.length} columns</span>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span>
+                      Rows {filteredTableRows?.length ?? 0} / {tableData.length}
+                    </span>
+                    <button
+                      onclick={showAllColumns}
+                      class="text-xs text-blue-600 hover:text-blue-700"
+                    >
+                      Show all
+                    </button>
+                    <button
+                      onclick={resetTableView}
+                      class="text-xs text-gray-600 hover:text-gray-800"
+                    >
+                      Reset view
+                    </button>
+                  </div>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    type="search"
+                    value={tableFilter}
+                    oninput={(event) => (tableFilter = event.target.value)}
+                    placeholder="Filter rows..."
+                    class="w-full max-w-xs rounded border border-gray-200 px-2 py-1 text-xs"
+                  />
+                  {#if tableFilter}
+                    <button
+                      onclick={clearTableFilter}
+                      class="text-xs text-gray-600 hover:text-gray-800"
+                    >
+                      Clear filter
+                    </button>
+                  {/if}
+                  <label class="flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={stickyFirstColumn}
+                      onchange={toggleStickyFirstColumn}
+                    />
+                    Sticky first column
+                  </label>
+                </div>
+                {#if showColumnManager}
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    {#each tableColumns as column}
+                      <label class="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns.includes(column)}
+                          onchange={() => toggleColumn(column)}
+                        />
+                        <span>{column}</span>
+                      </label>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 sticky top-0">
+                <tr>
+                  {#each tableColumnOrder as header}
+                    {#if visibleColumns.includes(header)}
+                      <th
+                        class="px-4 py-2 text-left font-medium text-gray-900 border-b {stickyFirstColumn && header === firstVisibleColumn ? 'sticky left-0 bg-gray-50 shadow-sm' : ''}"
+                      >
+                        {header}
+                      </th>
+                    {/if}
                   {/each}
+                  <th class="px-4 py-2 text-left font-medium text-gray-900 border-b">Actions</th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {#each filteredTableRows ?? [] as row, index}
+                  <tr class="{index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
+                    {#each tableColumnOrder as header}
+                      {#if visibleColumns.includes(header)}
+                        <td
+                          class="px-4 py-2 border-b {stickyFirstColumn && header === firstVisibleColumn ? 'sticky left-0 bg-white shadow-sm' : ''}"
+                        >
+                          {#each getHighlightParts(formatCellValue(row?.[header]), tableFilter) as part}
+                            <span class={part.isMatch ? 'bg-yellow-200' : ''}>{part.text}</span>
+                          {/each}
+                        </td>
+                      {/if}
+                    {/each}
+                    <td class="px-4 py-2 border-b">
+                      <button
+                        onclick={() => copyRowAsJson(row)}
+                        class="text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        Copy row
+                      </button>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
       {/if}
     {:else}
       <div class="h-full flex items-center justify-center">
