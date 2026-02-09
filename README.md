@@ -54,6 +54,8 @@ npm test         # run Node-based unit tests
 - Use "Clear unpinned" to trim history while keeping your pinned highlights.
 - Clear the Results panel to remove outdated data or error messages between runs.
 - Review response metadata (payload size, top-level data keys) to sanity-check results quickly.
+- Variables must be valid JSON objects; arrays or primitives are rejected to keep request payloads predictable.
+- History exports include metadata (version + timestamp) and can be re-imported from JSON payloads.
 - Use the timeout control in the Query Editor to cancel long-running requests (set to `0` to disable timeouts).
 - Use "Copy cURL" to share or debug the current request outside the UI.
 - Configure retry count + delay in the Query Editor to automatically retry on transient network or 5xx/429 errors.
