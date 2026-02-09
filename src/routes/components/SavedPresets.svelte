@@ -39,7 +39,7 @@
     <div>
       <h3 class="text-sm font-semibold text-gray-900">Saved Workspaces</h3>
       <p class="text-xs text-gray-500">
-        Store endpoint, query, and variables together for quick reloads.
+        Store endpoint, query, variables, and headers together for quick reloads.
       </p>
     </div>
     <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">

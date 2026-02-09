@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Added repository-level agent guidelines in `agents.md`.
+- Added a headers editor with JSON validation, visual management, and quick add buttons for auth/API key headers.
 - Query editor reset action to restore the default query and variables.
 - Added a Copy cURL action in the Query Editor for sharing and debugging requests.
 - Added configurable retry controls (count + delay) with automatic retries for transient GraphQL request failures.
@@ -27,6 +28,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Added missing Autoprefixer dev dependency to keep Svelte checks working.
 - Switched Tailwind config to CommonJS for better compatibility with the Vite Tailwind plugin.
 - Pointed the Vite Tailwind plugin at the CommonJS config to avoid SSR build errors.
 - Updated Vite Tailwind plugin usage to match current plugin signatures.

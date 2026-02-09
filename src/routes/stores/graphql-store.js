@@ -13,6 +13,7 @@ const DEFAULT_QUERY = `query GetCountries($first: Int) {
 }`;
 
 const DEFAULT_VARIABLES = '{\n  "first": 5\n}';
+const DEFAULT_HEADERS = "{}";
 
 const DEMO_SCHEMAS = {
   blog: {
@@ -842,6 +843,7 @@ function createGraphQLStore() {
     endpoint: "https://countries.trevorblades.com/",
     query: DEFAULT_QUERY,
     variables: DEFAULT_VARIABLES,
+    headers: DEFAULT_HEADERS,
     results: null,
     schema: null,
     loading: false,
@@ -1022,6 +1024,59 @@ function createGraphQLStore() {
   };
 
   /**
+   * Normalize a user-provided header map into fetch-ready headers.
+   * This ensures values are strings and guards against non-object JSON values.
+   * @param {string} rawHeaders
+   * @returns {{ headers: Record<string, string> | null, error: string | null }}
+   */
+  const parseHeadersJson = (rawHeaders) => {
+    if (!rawHeaders || !rawHeaders.trim()) {
+      return { headers: {}, error: null };
+    }
+
+    try {
+      const parsed = JSON.parse(rawHeaders);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return {
+          headers: null,
+          error: "Headers must be a JSON object with key/value pairs.",
+        };
+      }
+
+      const normalizedHeaders = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (!key || typeof key !== "string") {
+          return {
+            headers: null,
+            error: "Header names must be non-empty strings.",
+          };
+        }
+
+        if (value === null || typeof value === "undefined") {
+          normalizedHeaders[key] = "";
+          continue;
+        }
+
+        if (typeof value === "object") {
+          return {
+            headers: null,
+            error: "Header values must be strings, numbers, or booleans.",
+          };
+        }
+
+        normalizedHeaders[key] = String(value);
+      }
+
+      return { headers: normalizedHeaders, error: null };
+    } catch (error) {
+      return {
+        headers: null,
+        error: `Headers JSON error: ${error.message}`,
+      };
+    }
+  };
+
+  /**
    * Build a lightweight draft payload from editor state.
    * Keeping the payload minimal reduces localStorage usage.
    */
@@ -1029,6 +1084,7 @@ function createGraphQLStore() {
     endpoint: state.endpoint,
     query: state.query,
     variables: state.variables,
+    headers: state.headers,
     updatedAt: new Date().toISOString(),
   });
 
@@ -1331,6 +1387,14 @@ function createGraphQLStore() {
       });
     },
 
+    updateHeaders: (newHeaders) => {
+      update((state) => {
+        const nextState = { ...state, headers: newHeaders };
+        scheduleDraftSave(buildDraftPayload(nextState));
+        return nextState;
+      });
+    },
+
     setRequestTimeoutMs: (timeoutMs) => {
       const normalizedTimeout =
         Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.round(timeoutMs) : 0;
@@ -1471,6 +1535,7 @@ function createGraphQLStore() {
         endpoint: draft.endpoint ?? state.endpoint,
         query: draft.query ?? state.query,
         variables: draft.variables ?? state.variables,
+        headers: draft.headers ?? state.headers,
         queryStructure: parseQuery(draft.query ?? state.query),
         error: null,
         draft,
@@ -1513,6 +1578,7 @@ function createGraphQLStore() {
           endpoint: state.endpoint,
           query: state.query,
           variables: state.variables,
+          headers: state.headers,
           createdAt:
             existingIndex >= 0
               ? state.savedPresets[existingIndex].createdAt
@@ -1558,6 +1624,7 @@ function createGraphQLStore() {
         endpoint: preset.endpoint ?? state.endpoint,
         query: preset.query ?? state.query,
         variables: preset.variables ?? state.variables,
+        headers: preset.headers ?? state.headers,
         queryStructure: parseQuery(preset.query ?? state.query),
         error: null,
       }));
@@ -1566,6 +1633,7 @@ function createGraphQLStore() {
           endpoint: preset.endpoint,
           query: preset.query,
           variables: preset.variables,
+          headers: preset.headers,
         }),
       );
     },
@@ -1578,6 +1646,7 @@ function createGraphQLStore() {
           ...state,
           query: DEFAULT_QUERY,
           variables: DEFAULT_VARIABLES,
+          headers: DEFAULT_HEADERS,
           results: null,
           error: null,
           loading: false,
@@ -1593,6 +1662,8 @@ function createGraphQLStore() {
       recordLog(LEVELS.INFO, "Cleared activity logs");
       update((state) => ({ ...state, logs: [] }));
     },
+
+    parseHeadersJson,
 
     logUiEvent,
 
@@ -1697,6 +1768,26 @@ function createGraphQLStore() {
           return;
         }
 
+        const { headers: parsedHeaders, error: headerError } = parseHeadersJson(
+          currentState.headers,
+        );
+        if (headerError) {
+          recordLog(LEVELS.WARN, "Execution blocked: invalid headers JSON", {
+            entryId,
+            error: headerError,
+          });
+          finalizeExecution({
+            status: "invalid",
+            errorMessage: headerError,
+          });
+          return;
+        }
+
+        const requestHeaders = {
+          "Content-Type": "application/json",
+          ...(parsedHeaders ?? {}),
+        };
+
         if (activeController) {
           activeController.abort("superseded");
           activeController = null;
@@ -1734,9 +1825,7 @@ function createGraphQLStore() {
           try {
             const response = await fetch(currentState.endpoint, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
+              headers: requestHeaders,
               body: JSON.stringify({
                 query: currentState.query,
                 variables: variables,

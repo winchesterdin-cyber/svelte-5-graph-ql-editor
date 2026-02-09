@@ -9,6 +9,7 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **Copy cURL** for generating a ready-to-run request from the current query.
 - **Visual Builder** for composing queries visually from schema fields.
 - **Variables Editor** with JSON validation, error feedback, and a visual helper.
+- **Headers Editor** for reusable Authorization/API key headers with JSON validation.
 - **Schema Explorer** to introspect or load demo schemas.
 - **Results Panel** with formatted/raw/table views, response metadata, quick copy/download, and clearing.
 - **Request Controls** with configurable timeouts, retries, and cancel support for long-running requests.
@@ -54,6 +55,7 @@ npm test         # run Node-based unit tests
 - Use "Copy cURL" to share or debug the current request outside the UI.
 - Configure retry count + delay in the Query Editor to automatically retry on transient network or 5xx/429 errors.
 - Use the Activity Log in the Results tab to inspect request events and debugging context.
+- Add request headers (Authorization, API keys) in the Headers tab to reuse them on every request.
 - Save common endpoint + query + variables combinations in the Saved Workspaces section of the Query Editor.
 - Restore or dismiss auto-saved drafts when prompted in the Query Editor.
 - Svelte checks are configured to validate TypeScript/Svelte sources without enforcing type checks on plain JavaScript.
