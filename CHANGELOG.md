@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Added history filtering, status chips, copy actions, and summary stats for recent queries.
 - Added a results clear action to reset error/results state between runs.
 - Added history export and last-execution metadata for better run visibility.
+- Added JSON history export/import helpers with metadata for easier sharing.
 - Added response metadata in the results panel (payload size + data keys).
 - Added history import and pinning with pinned-first sorting in the results panel.
 - Added history deletion and clear-unpinned controls plus store helpers for targeted cleanup.
@@ -40,5 +41,8 @@ All notable changes to this project will be documented in this file.
 - Replaced dynamic Tailwind utility interpolation with inline styles in the schema field tree for reliable rendering.
 - Removed unused placeholder dependencies to prevent install failures.
 - Added validation for missing endpoints and invalid variables before executing queries.
+- Rejected non-object variables payloads to avoid sending invalid GraphQL requests.
+- Skipped loading malformed history entries instead of mutating editor state.
+- Reused the same history import normalization logic for JSON payload imports.
 - Recorded execution durations and error details in history entries.
 - Fixed query execution to read the latest store state before dispatching requests.
