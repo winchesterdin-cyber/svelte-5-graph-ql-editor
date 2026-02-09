@@ -15,6 +15,8 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **Request Controls** with configurable timeouts, retries, and cancel support for long-running requests.
 - **Activity Log** to review structured request events with INFO/WARN/ERROR levels.
 - **Query History** to reload, re-run, pin, delete, copy, import, or export past queries/variables.
+- **History Notes** to annotate and filter saved requests.
+- **History Persistence** to keep recent requests across refreshes.
 - **History filters** and status summaries for recent requests.
 - **Saved Workspaces** to store and reapply endpoint/query/variable combinations.
 - **Auto-saved Drafts** to recover in-progress editor changes after refreshes.
@@ -47,7 +49,8 @@ npm test         # run Node-based unit tests
 - Demo schemas can be loaded from the schema explorer or visual builder to try the UI without a live endpoint.
 - The reset button in the Query Editor restores the default query and variables so you can quickly recover from edits.
 - Recent query history entries can be loaded back into the editor, re-run, pinned, deleted, copied, imported, or exported directly from the Results tab.
-- Use the history filter and status chips to quickly find past queries by endpoint, status, or query snippet.
+- Add notes to history entries to label use cases or expected results.
+- Use the history filter and status chips to quickly find past queries by endpoint, status, query snippet, or notes.
 - Use "Clear unpinned" to trim history while keeping your pinned highlights.
 - Clear the Results panel to remove outdated data or error messages between runs.
 - Review response metadata (payload size, top-level data keys) to sanity-check results quickly.

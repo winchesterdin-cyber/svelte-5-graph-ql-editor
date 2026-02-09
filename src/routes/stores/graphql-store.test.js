@@ -28,6 +28,8 @@ const mockLocalStorage = {
   },
 };
 
+const HISTORY_STORAGE_KEY = "graphql-editor-history";
+
 const resetStore = () => {
   graphqlStore.resetDefaults();
   graphqlStore.clearHistory();
@@ -461,6 +463,38 @@ test("importHistory deduplicates by id and respects limit", () => {
     state.history.find((entry) => entry.id === "entry-10").query,
     "query { updated }",
   );
+});
+
+test("persists history updates and notes to localStorage", () => {
+  graphqlStore.importHistory([
+    { id: "entry-1", query: "query { one }", status: "success" },
+  ]);
+
+  let stored = mockStorage.get(HISTORY_STORAGE_KEY);
+  assert.ok(stored);
+  let parsed = JSON.parse(stored);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].id, "entry-1");
+
+  graphqlStore.updateHistoryNote("entry-1", "Primary happy path");
+  const state = graphqlStore.getState();
+  assert.equal(state.history[0].note, "Primary happy path");
+
+  stored = mockStorage.get(HISTORY_STORAGE_KEY);
+  parsed = JSON.parse(stored);
+  assert.equal(parsed[0].note, "Primary happy path");
+});
+
+test("truncates overly long history notes", () => {
+  graphqlStore.importHistory([
+    { id: "entry-2", query: "query { two }", status: "success" },
+  ]);
+
+  const longNote = "a".repeat(300);
+  graphqlStore.updateHistoryNote("entry-2", longNote);
+
+  const state = graphqlStore.getState();
+  assert.equal(state.history[0].note.length, 280);
 });
 
 test("saves, loads, and applies workspace presets", () => {

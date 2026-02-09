@@ -8,6 +8,8 @@
   let historyFilter = $state('');
   let historyStatusFilter = $state('all');
   let logLevelFilter = $state('all');
+  let editingNoteId = $state(null);
+  let noteDrafts = $state({});
 
   // Subscribe to store changes
   graphqlStore.subscribe(state => {
@@ -23,7 +25,7 @@
         const matchesStatus = historyStatusFilter === 'all' || entry.status === historyStatusFilter;
         if (!matchesStatus) return false;
         if (!filter) return true;
-        return [entry.endpoint, entry.query, entry.status, entry.error, entry.statusCode]
+        return [entry.endpoint, entry.query, entry.status, entry.error, entry.statusCode, entry.note]
           .filter(Boolean)
           .some(value => value.toString().toLowerCase().includes(filter));
       })
@@ -159,6 +161,37 @@
   function copyHistoryVariables(entry) {
     if (!entry?.variables) return;
     navigator.clipboard?.writeText(entry.variables);
+  }
+
+  /**
+   * Begin editing a history note by seeding draft state.
+   * This keeps edits local until the user explicitly saves.
+   */
+  function startNoteEdit(entry) {
+    if (!entry) return;
+    editingNoteId = entry.id;
+    noteDrafts = {
+      ...noteDrafts,
+      [entry.id]: entry.note ?? ''
+    };
+  }
+
+  function updateNoteDraft(entryId, value) {
+    noteDrafts = {
+      ...noteDrafts,
+      [entryId]: value
+    };
+  }
+
+  function saveNote(entry) {
+    if (!entry) return;
+    const draft = noteDrafts[entry.id] ?? '';
+    graphqlStore.updateHistoryNote(entry.id, draft);
+    editingNoteId = null;
+  }
+
+  function cancelNoteEdit() {
+    editingNoteId = null;
   }
 
   function renderTableView(data) {
@@ -332,7 +365,7 @@
             type="search"
             value={historyFilter}
             oninput={(event) => (historyFilter = event.target.value)}
-            placeholder="Filter by endpoint, query, or status"
+            placeholder="Filter by endpoint, query, status, or note"
             class="flex-1 min-w-[200px] px-3 py-1.5 text-sm border border-gray-200 rounded"
           />
           <div class="text-xs text-gray-600 flex items-center gap-3">
@@ -410,6 +443,9 @@
                   {#if entry.variables}
                     <p class="text-xs text-gray-500 truncate mt-1">Vars: {entry.variables.replace(/\s+/g, ' ')}</p>
                   {/if}
+                  {#if entry.note}
+                    <p class="text-xs text-blue-600 mt-1">Note: {entry.note}</p>
+                  {/if}
                   {#if entry.error}
                     <p class="text-xs text-red-500 mt-1">{entry.error}</p>
                   {/if}
@@ -451,8 +487,46 @@
                   >
                     Copy vars
                   </button>
+                  <button
+                    onclick={() => startNoteEdit(entry)}
+                    class="px-2 py-1 text-xs bg-white border border-gray-200 rounded hover:bg-gray-50"
+                  >
+                    {entry.note ? 'Edit note' : 'Add note'}
+                  </button>
                 </div>
               </div>
+              {#if editingNoteId === entry.id}
+                <div class="mt-3 border-t border-gray-200 pt-3">
+                  <label
+                    class="text-xs font-medium text-gray-600"
+                    for={`history-note-${entry.id}`}
+                  >
+                    History note
+                  </label>
+                  <textarea
+                    id={`history-note-${entry.id}`}
+                    value={noteDrafts[entry.id] ?? ''}
+                    oninput={(event) => updateNoteDraft(entry.id, event.target.value)}
+                    rows="2"
+                    class="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-xs"
+                    placeholder="Add a short note to describe this request"
+                  ></textarea>
+                  <div class="mt-2 flex items-center gap-2">
+                    <button
+                      onclick={() => saveNote(entry)}
+                      class="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      Save note
+                    </button>
+                    <button
+                      onclick={cancelNoteEdit}
+                      class="px-2 py-1 text-xs bg-white border border-gray-200 rounded hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              {/if}
             </li>
           {/each}
         {/if}
