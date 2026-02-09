@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Added response metadata in the results panel (payload size + data keys).
 - Added history import and pinning with pinned-first sorting in the results panel.
 - Added history deletion and clear-unpinned controls plus store helpers for targeted cleanup.
+- Added persisted query history with per-entry notes for annotating requests.
 - Added JSON error feedback in the variables editor.
 - Added auto-saved editor drafts with restore/dismiss controls in the query editor.
 

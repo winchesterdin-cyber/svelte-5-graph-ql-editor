@@ -829,16 +829,70 @@ const DEMO_SCHEMAS = {
 
 function createGraphQLStore() {
   const HISTORY_LIMIT = 50;
+  const HISTORY_NOTE_MAX_LENGTH = 280;
   const LOG_LIMIT = 200;
   const DEFAULT_TIMEOUT_MS = 15000;
   const DEFAULT_RETRY_COUNT = 2;
   const DEFAULT_RETRY_DELAY_MS = 1000;
   const PRESET_STORAGE_KEY = "graphql-editor-presets";
+  const HISTORY_STORAGE_KEY = "graphql-editor-history";
   const DRAFT_STORAGE_KEY = "graphql-editor-draft";
   const DRAFT_SAVE_DELAY_MS = 600;
   let activeController = null;
   let activeTimeoutId = null;
   let draftSaveTimeoutId = null;
+
+  /**
+   * Normalize user-supplied notes to keep history entries tidy and safe to render.
+   * Truncates overly long notes to prevent unbounded localStorage payloads.
+   */
+  const normalizeHistoryNote = (note) => {
+    if (!note) return "";
+    const trimmed = String(note).trim();
+    if (trimmed.length <= HISTORY_NOTE_MAX_LENGTH) {
+      return trimmed;
+    }
+    return trimmed.slice(0, HISTORY_NOTE_MAX_LENGTH);
+  };
+
+  /**
+   * Recover persisted history entries from localStorage.
+   * This is best-effort so the UI can still load without storage access.
+   */
+  const readHistoryFromStorage = () => {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      logEvent(LEVELS.WARN, "Failed to parse saved history entries", {
+        error: error.message,
+      });
+      return [];
+    }
+  };
+
+  const normalizeHistoryEntry = (entry) => ({
+    id:
+      entry.id ||
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}`),
+    timestamp: entry.timestamp || new Date().toISOString(),
+    endpoint: entry.endpoint ?? "",
+    query: entry.query ?? "",
+    variables: entry.variables ?? "",
+    status: entry.status ?? "success",
+    durationMs: entry.durationMs,
+    statusCode: entry.statusCode,
+    statusText: entry.statusText,
+    error: entry.error,
+    pinned: Boolean(entry.pinned),
+    note: normalizeHistoryNote(entry.note),
+  });
+
   const initialState = {
     endpoint: "https://countries.trevorblades.com/",
     query: DEFAULT_QUERY,
@@ -848,7 +902,9 @@ function createGraphQLStore() {
     schema: null,
     loading: false,
     error: null,
-    history: [],
+    history: readHistoryFromStorage()
+      .map(normalizeHistoryEntry)
+      .slice(0, HISTORY_LIMIT),
     lastExecution: null,
     requestTimeoutMs: DEFAULT_TIMEOUT_MS,
     retryPolicy: {
@@ -960,32 +1016,32 @@ function createGraphQLStore() {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
   };
 
-  const normalizeHistoryEntry = (entry) => ({
-    id:
-      entry.id ||
-      (typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `${Date.now()}`),
-    timestamp: entry.timestamp || new Date().toISOString(),
-    endpoint: entry.endpoint ?? "",
-    query: entry.query ?? "",
-    variables: entry.variables ?? "",
-    status: entry.status ?? "success",
-    durationMs: entry.durationMs,
-    statusCode: entry.statusCode,
-    statusText: entry.statusText,
-    error: entry.error,
-    pinned: Boolean(entry.pinned),
-  });
+  /**
+   * Persist history entries in localStorage for durable session recall.
+   */
+  const persistHistory = (history) => {
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+    } catch (error) {
+      recordLog(LEVELS.ERROR, "Failed to persist history entries", {
+        error: error.message,
+      });
+    }
+  };
 
   const addHistoryEntry = (entry) => {
-    update((state) => ({
-      ...state,
-      history: [normalizeHistoryEntry(entry), ...state.history].slice(
-        0,
-        HISTORY_LIMIT,
-      ),
-    }));
+    update((state) => {
+      const nextHistory = [
+        normalizeHistoryEntry(entry),
+        ...state.history,
+      ].slice(0, HISTORY_LIMIT);
+      persistHistory(nextHistory);
+      return {
+        ...state,
+        history: nextHistory,
+      };
+    });
   };
 
   /**
@@ -1439,7 +1495,10 @@ function createGraphQLStore() {
 
     clearHistory: () => {
       recordLog(LEVELS.INFO, "Cleared query history");
-      update((state) => ({ ...state, history: [] }));
+      update((state) => {
+        persistHistory([]);
+        return { ...state, history: [] };
+      });
     },
 
     importHistory: (entries = []) => {
@@ -1455,32 +1514,81 @@ function createGraphQLStore() {
             [...merged].reverse().map((entry) => [entry.id, entry]),
           ).values(),
         ).reverse();
-        return { ...state, history: deduped.slice(0, HISTORY_LIMIT) };
+        const nextHistory = deduped.slice(0, HISTORY_LIMIT);
+        persistHistory(nextHistory);
+        return { ...state, history: nextHistory };
       });
     },
 
     toggleHistoryPin: (entryId) => {
-      update((state) => ({
-        ...state,
-        history: state.history.map((entry) =>
+      update((state) => {
+        const nextHistory = state.history.map((entry) =>
           entry.id === entryId ? { ...entry, pinned: !entry.pinned } : entry,
-        ),
-      }));
+        );
+        persistHistory(nextHistory);
+        return {
+          ...state,
+          history: nextHistory,
+        };
+      });
     },
 
     removeHistoryEntry: (entryId) => {
-      update((state) => ({
-        ...state,
-        history: state.history.filter((entry) => entry.id !== entryId),
-      }));
+      update((state) => {
+        const nextHistory = state.history.filter(
+          (entry) => entry.id !== entryId,
+        );
+        persistHistory(nextHistory);
+        return {
+          ...state,
+          history: nextHistory,
+        };
+      });
     },
 
     clearUnpinnedHistory: () => {
       recordLog(LEVELS.INFO, "Cleared unpinned history entries");
-      update((state) => ({
-        ...state,
-        history: state.history.filter((entry) => entry.pinned),
-      }));
+      update((state) => {
+        const nextHistory = state.history.filter((entry) => entry.pinned);
+        persistHistory(nextHistory);
+        return {
+          ...state,
+          history: nextHistory,
+        };
+      });
+    },
+
+    updateHistoryNote: (entryId, note) => {
+      const normalizedNote = normalizeHistoryNote(note);
+      if (note && normalizedNote.length < String(note).trim().length) {
+        recordLog(LEVELS.WARN, "History note truncated to max length", {
+          entryId,
+          maxLength: HISTORY_NOTE_MAX_LENGTH,
+        });
+      }
+      update((state) => {
+        let found = false;
+        const nextHistory = state.history.map((entry) => {
+          if (entry.id !== entryId) return entry;
+          found = true;
+          return { ...entry, note: normalizedNote };
+        });
+        if (!found) {
+          recordLog(LEVELS.WARN, "History entry not found for note update", {
+            entryId,
+          });
+          return state;
+        }
+        recordLog(LEVELS.INFO, "Updated history note", {
+          entryId,
+          hasNote: Boolean(normalizedNote),
+        });
+        persistHistory(nextHistory);
+        return {
+          ...state,
+          history: nextHistory,
+        };
+      });
     },
 
     clearResults: () => {
