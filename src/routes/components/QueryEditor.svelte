@@ -7,6 +7,7 @@
   let query = $state('');
   let endpoint = $state('');
   let variables = $state('');
+  let headers = $state('');
   let draft = $state(null);
   let isExecuting = $state(false);
   let requestTimeoutMs = $state(15000);
@@ -20,6 +21,7 @@
       query = state.query;
       endpoint = state.endpoint;
       variables = state.variables;
+      headers = state.headers;
       draft = state.draft;
       isExecuting = state.loading;
       requestTimeoutMs = state.requestTimeoutMs ?? 0;
@@ -115,19 +117,31 @@
     if (variables?.trim()) {
       parsedVariables = JSON.parse(variables);
     }
+    const { headers: parsedHeaders, error: headerError } =
+      graphqlStore.parseHeadersJson(headers);
+    if (headerError) {
+      throw new Error(headerError);
+    }
 
     const payload = JSON.stringify({
       query,
       variables: parsedVariables ?? undefined
     });
 
+    const headerFlags = Object.entries({
+      'Content-Type': 'application/json',
+      ...(parsedHeaders ?? {})
+    }).flatMap(([key, value]) => [
+      '-H',
+      `'${`${key}: ${value}`.replace(/'/g, "'\\''")}'`
+    ]);
+
     return [
       "curl",
       "-X",
       "POST",
       `'${endpoint}'`,
-      "-H",
-      "'Content-Type: application/json'",
+      ...headerFlags,
       "-d",
       `'${payload.replace(/'/g, "'\\''")}'`
     ].join(' ');
@@ -145,8 +159,8 @@
     try {
       command = buildCurlCommand();
     } catch (error) {
-      copyStatus = `Variables JSON error: ${error.message}`;
-      graphqlStore.logUiEvent(LEVELS.WARN, 'Invalid variables for cURL copy', {
+      copyStatus = `${error.message}`;
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Invalid JSON for cURL copy', {
         error: error.message
       });
       return;

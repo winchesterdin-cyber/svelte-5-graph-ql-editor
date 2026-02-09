@@ -36,6 +36,7 @@ const resetStore = () => {
     ...state,
     endpoint: "https://example.com/graphql",
     variables: "{}",
+    headers: "{}",
   }));
 };
 
@@ -302,6 +303,47 @@ test("stores history entry for invalid variables", async () => {
   assert.match(state.error, /Variables JSON error/);
   assert.equal(state.history[0].status, "invalid");
   assert.equal(state.lastExecution.status, "invalid");
+});
+
+test("stores history entry for invalid headers", async () => {
+  graphqlStore.update((state) => ({
+    ...state,
+    headers: "{ invalid",
+  }));
+
+  await graphqlStore.executeQuery();
+
+  const state = graphqlStore.getState();
+  assert.match(state.error, /Headers JSON error/);
+  assert.equal(state.history[0].status, "invalid");
+  assert.equal(state.lastExecution.status, "invalid");
+});
+
+test("sends custom headers with requests", async () => {
+  let receivedHeaders;
+  globalThis.fetch = async (_url, options) => {
+    receivedHeaders = options.headers;
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        data: { ok: true },
+      }),
+    };
+  };
+
+  graphqlStore.update((state) => ({
+    ...state,
+    headers:
+      '{\n  \"Authorization\": \"Bearer token\",\n  \"X-Env\": \"test\"\n}',
+  }));
+
+  await graphqlStore.executeQuery();
+
+  assert.equal(receivedHeaders.Authorization, "Bearer token");
+  assert.equal(receivedHeaders["X-Env"], "test");
+  assert.equal(receivedHeaders["Content-Type"], "application/json");
 });
 
 test("stores history entry for GraphQL errors", async () => {

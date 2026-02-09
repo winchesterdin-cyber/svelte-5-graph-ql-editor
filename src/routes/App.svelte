@@ -2,6 +2,7 @@
   import QueryEditor from './components/QueryEditor.svelte';
   import VisualBuilder from './components/VisualBuilder.svelte';
   import VariablesEditor from './components/VariablesEditor.svelte';
+  import HeadersEditor from './components/HeadersEditor.svelte';
   import ResultsPanel from './components/ResultsPanel.svelte';
   import SchemaExplorer from './components/SchemaExplorer.svelte';
   import ExampleQueries from './components/ExampleQueries.svelte';
@@ -17,6 +18,7 @@
     { id: 'editor', label: 'Query Editor' },
     { id: 'visual', label: 'Visual Builder' },
     { id: 'variables', label: 'Variables' },
+    { id: 'headers', label: 'Headers' },
     { id: 'results', label: 'Results' }
   ];
 
@@ -203,6 +205,8 @@
           <VisualBuilder {darkMode} />
         {:else if activeTab === 'variables'}
           <VariablesEditor {darkMode} />
+        {:else if activeTab === 'headers'}
+          <HeadersEditor {darkMode} />
         {:else if activeTab === 'results'}
           <ResultsPanel {darkMode} />
         {/if}
