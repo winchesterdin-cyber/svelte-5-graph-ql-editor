@@ -1,5 +1,6 @@
 <script>
   import QueryEditor from './components/QueryEditor.svelte';
+  import { onMount } from 'svelte';
   import VisualBuilder from './components/VisualBuilder.svelte';
   import VariablesEditor from './components/VariablesEditor.svelte';
   import HeadersEditor from './components/HeadersEditor.svelte';
@@ -13,6 +14,10 @@
   let showMobileMenu = $state(false);
   let darkMode = $state(false);
   let endpoint = $state('');
+  let headers = $state('{}');
+  let endpointProfiles = $state([]);
+  let showCommandPalette = $state(false);
+  const ENDPOINT_PROFILES_STORAGE_KEY = 'graphql-editor-endpoint-profiles';
 
   const tabs = [
     { id: 'editor', label: 'Query Editor' },
@@ -25,6 +30,7 @@
   $effect(() => {
     const unsubscribe = graphqlStore.subscribe((state) => {
       endpoint = state.endpoint;
+      headers = state.headers;
     });
     return unsubscribe;
   });
@@ -49,6 +55,89 @@
   function handleEndpointChange(event) {
     graphqlStore.updateEndpoint(event.target.value);
   }
+
+  function saveEndpointProfile() {
+    const normalizedEndpoint = endpoint.trim();
+    if (!normalizedEndpoint) return;
+    const existingIndex = endpointProfiles.findIndex((profile) => profile.endpoint === normalizedEndpoint);
+    const profileName = `Endpoint ${existingIndex >= 0 ? existingIndex + 1 : endpointProfiles.length + 1}`;
+    const nextProfile = {
+      id: crypto.randomUUID(),
+      name: profileName,
+      endpoint: normalizedEndpoint,
+      headers,
+      savedAt: new Date().toISOString(),
+    };
+    const nextProfiles = existingIndex >= 0
+      ? endpointProfiles.map((profile, index) => (index === existingIndex ? nextProfile : profile))
+      : [nextProfile, ...endpointProfiles].slice(0, 10);
+    endpointProfiles = nextProfiles;
+    localStorage.setItem(ENDPOINT_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
+    graphqlStore.logUiEvent('INFO', 'Saved endpoint profile', {
+      endpoint: normalizedEndpoint,
+      hasHeaders: Boolean(headers?.trim() && headers.trim() !== '{}'),
+      count: nextProfiles.length,
+    });
+  }
+
+  function selectEndpointProfile(event) {
+    const profileId = event.target.value;
+    const profile = endpointProfiles.find((item) => item.id === profileId);
+    if (!profile) return;
+    graphqlStore.updateEndpoint(profile.endpoint);
+    graphqlStore.updateHeaders(profile.headers ?? '{}');
+    graphqlStore.logUiEvent('INFO', 'Applied endpoint profile', {
+      endpoint: profile.endpoint,
+      hasHeaders: Boolean(profile.headers?.trim() && profile.headers.trim() !== '{}'),
+    });
+  }
+
+  function removeEndpointProfile(profileId) {
+    endpointProfiles = endpointProfiles.filter((profile) => profile.id !== profileId);
+    localStorage.setItem(ENDPOINT_PROFILES_STORAGE_KEY, JSON.stringify(endpointProfiles));
+    graphqlStore.logUiEvent('INFO', 'Removed endpoint profile', {
+      remaining: endpointProfiles.length,
+    });
+  }
+
+  function executeShortcutCommand(commandId) {
+    if (commandId === 'switch-editor-tab') switchTab('editor');
+    if (commandId === 'switch-results-tab') switchTab('results');
+    if (commandId === 'toggle-schema') toggleSchema();
+    if (commandId === 'toggle-theme') toggleDarkMode();
+    if (commandId === 'save-endpoint') saveEndpointProfile();
+    showCommandPalette = false;
+  }
+
+  onMount(() => {
+    const savedProfiles = localStorage.getItem(ENDPOINT_PROFILES_STORAGE_KEY);
+    if (savedProfiles) {
+      try {
+        endpointProfiles = JSON.parse(savedProfiles);
+      } catch {
+        endpointProfiles = [];
+      }
+    }
+
+    const handleTogglePalette = () => {
+      showCommandPalette = !showCommandPalette;
+    };
+
+    const handleKeyboardShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        showCommandPalette = !showCommandPalette;
+      }
+    };
+
+    window.addEventListener('graphql-command-palette:toggle', handleTogglePalette);
+    window.addEventListener('keydown', handleKeyboardShortcut);
+
+    return () => {
+      window.removeEventListener('graphql-command-palette:toggle', handleTogglePalette);
+      window.removeEventListener('keydown', handleKeyboardShortcut);
+    };
+  });
 </script>
 
 <div class="min-h-screen transition-colors duration-200 {darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}">
@@ -67,6 +156,23 @@
             placeholder="https://api.example.com/graphql"
             class="px-3 py-1 border rounded text-sm w-64 transition-colors duration-200 {darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}"
           />
+          <button
+            onclick={saveEndpointProfile}
+            class="px-2 py-1 rounded bg-indigo-500 text-white text-xs hover:bg-indigo-600"
+          >
+            Save
+          </button>
+          {#if endpointProfiles.length}
+            <select
+              onchange={selectEndpointProfile}
+              class="px-2 py-1 border rounded text-xs {darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}"
+            >
+              <option value="">Saved endpoints</option>
+              {#each endpointProfiles as profile}
+                <option value={profile.id}>{profile.name}</option>
+              {/each}
+            </select>
+          {/if}
         </div>
       </div>
       
@@ -214,6 +320,47 @@
     </div>
   </div>
 </div>
+
+{#if showCommandPalette}
+  <div class="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 p-4 pt-20">
+    <div
+      class="w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-900">Command Palette</h2>
+        <button
+          class="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+          onclick={() => (showCommandPalette = false)}
+        >
+          Close
+        </button>
+      </div>
+      <p class="mt-1 text-xs text-gray-500">Use quick commands and shortcuts for frequent actions.</p>
+      <ul class="mt-3 space-y-2 text-sm">
+        <li><button onclick={() => executeShortcutCommand('switch-editor-tab')} class="w-full rounded border border-gray-200 px-3 py-2 text-left hover:bg-gray-50">Open Query Editor tab</button></li>
+        <li><button onclick={() => executeShortcutCommand('switch-results-tab')} class="w-full rounded border border-gray-200 px-3 py-2 text-left hover:bg-gray-50">Open Results tab</button></li>
+        <li><button onclick={() => executeShortcutCommand('toggle-schema')} class="w-full rounded border border-gray-200 px-3 py-2 text-left hover:bg-gray-50">Toggle Schema Explorer</button></li>
+        <li><button onclick={() => executeShortcutCommand('toggle-theme')} class="w-full rounded border border-gray-200 px-3 py-2 text-left hover:bg-gray-50">Toggle Light/Dark Theme</button></li>
+        <li><button onclick={() => executeShortcutCommand('save-endpoint')} class="w-full rounded border border-gray-200 px-3 py-2 text-left hover:bg-gray-50">Save Current Endpoint Profile</button></li>
+      </ul>
+      {#if endpointProfiles.length}
+        <div class="mt-4 border-t pt-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Endpoint manager</p>
+          <ul class="mt-2 space-y-2">
+            {#each endpointProfiles as profile}
+              <li class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1 text-xs">
+                <span class="truncate">{profile.endpoint}</span>
+                <button onclick={() => removeEndpointProfile(profile.id)} class="rounded bg-red-100 px-2 py-0.5 text-red-700 hover:bg-red-200">Remove</button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .scrollbar-hide {
