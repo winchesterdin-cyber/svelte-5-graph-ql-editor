@@ -3,6 +3,11 @@
   import { graphqlStore } from '../stores/graphql-store.js';
   import SavedPresets from './SavedPresets.svelte';
   import { LEVELS } from '../stores/logger.js';
+  import {
+    getDiagnostics,
+    getOperationOutline,
+    getSchemaSuggestions
+  } from './editor-intelligence.js';
 
   let query = $state('');
   let endpoint = $state('');
@@ -14,6 +19,10 @@
   let retryMax = $state(0);
   let retryDelayMs = $state(1000);
   let copyStatus = $state('');
+  let schema = $state(null);
+  let cursorIndex = $state(0);
+  let showSuggestions = $state(false);
+  let selectedSuggestionIndex = $state(0);
 
   // Subscribe to store changes
   $effect(() => {
@@ -27,9 +36,14 @@
       requestTimeoutMs = state.requestTimeoutMs ?? 0;
       retryMax = state.retryPolicy?.maxRetries ?? 0;
       retryDelayMs = state.retryPolicy?.retryDelayMs ?? 1000;
+      schema = state.schema;
     });
     return unsubscribe;
   });
+
+  const operationOutline = $derived(() => getOperationOutline(query));
+  const diagnostics = $derived(() => getDiagnostics({ query, endpoint, variables }));
+  const suggestions = $derived(() => getSchemaSuggestions({ schema, query, cursorIndex }));
 
   const draftToRestore = $derived(() => {
     if (!draft) return null;
@@ -47,7 +61,22 @@
   function handleQueryChange(event) {
     const newQuery = event.target.value;
     query = newQuery;
+    cursorIndex = event.target.selectionStart ?? newQuery.length;
     graphqlStore.updateQuery(newQuery);
+    showSuggestions = false;
+  }
+
+  function goToOperation(operation) {
+    if (!operation) return;
+    const editorEl = document.getElementById('graphql-query-input');
+    if (!editorEl) return;
+    editorEl.focus();
+    editorEl.setSelectionRange(operation.index, operation.index);
+    cursorIndex = operation.index;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Jumped to operation from outline', {
+      operation: operation.name,
+      index: operation.index,
+    });
   }
 
   async function executeQuery() {
@@ -67,10 +96,82 @@
       .replace(/\n\s*\n/g, '\n');
     
     graphqlStore.updateQuery(formatted);
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Formatted query document');
   }
 
   function resetQuery() {
     graphqlStore.resetDefaults();
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Reset query editor to defaults');
+  }
+
+  function handleEditorSelect(event) {
+    cursorIndex = event.target.selectionStart ?? 0;
+  }
+
+  function applySuggestion(suggestion) {
+    if (!suggestion) return;
+    const editorEl = document.getElementById('graphql-query-input');
+    if (!editorEl) return;
+    const before = query.slice(0, cursorIndex);
+    const after = query.slice(cursorIndex);
+    const tokenMatch = before.match(/[A-Za-z_][A-Za-z0-9_]*$/);
+    const tokenLength = tokenMatch?.[0]?.length ?? 0;
+    const replaceFrom = cursorIndex - tokenLength;
+    const nextQuery = `${query.slice(0, replaceFrom)}${suggestion.insertText}${after}`;
+    graphqlStore.updateQuery(nextQuery);
+    cursorIndex = replaceFrom + suggestion.insertText.length;
+    showSuggestions = false;
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Applied schema suggestion', {
+      suggestion: suggestion.label,
+    });
+    requestAnimationFrame(() => {
+      editorEl.focus();
+      editorEl.setSelectionRange(cursorIndex, cursorIndex);
+    });
+  }
+
+  function moveSuggestionSelection(direction = 1) {
+    if (!suggestions.length) return;
+    selectedSuggestionIndex =
+      (selectedSuggestionIndex + direction + suggestions.length) % suggestions.length;
+  }
+
+  function handleKeydown(event) {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      executeQuery();
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
+      event.preventDefault();
+      showSuggestions = true;
+      selectedSuggestionIndex = 0;
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Opened schema autocomplete menu');
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      window.dispatchEvent(new CustomEvent('graphql-command-palette:toggle'));
+      return;
+    }
+
+    if (!showSuggestions) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveSuggestionSelection(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveSuggestionSelection(-1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      applySuggestion(suggestions[selectedSuggestionIndex]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      showSuggestions = false;
+    }
   }
 
   function handleTimeoutChange(event) {
@@ -292,11 +393,76 @@
 
   <div class="flex-1 border border-gray-300 rounded">
     <textarea
+      id="graphql-query-input"
       value={query}
       oninput={handleQueryChange}
+      onselect={handleEditorSelect}
+      onclick={handleEditorSelect}
+      onkeyup={handleEditorSelect}
+      onkeydown={handleKeydown}
       placeholder="Enter your GraphQL query here..."
       class="w-full h-full p-4 font-mono text-sm resize-none border-none outline-none"
     ></textarea>
+  </div>
+
+  {#if showSuggestions && suggestions.length}
+    <div class="mt-3 rounded border border-indigo-200 bg-indigo-50 p-3 text-xs">
+      <p class="mb-2 font-semibold text-indigo-900">Schema autocomplete</p>
+      <ul class="space-y-1">
+        {#each suggestions as suggestion, index}
+          <li>
+            <button
+              onclick={() => applySuggestion(suggestion)}
+              class="w-full rounded border px-2 py-1 text-left {index === selectedSuggestionIndex ? 'border-indigo-400 bg-white' : 'border-transparent'}"
+            >
+              <span class="font-mono text-indigo-900">{suggestion.label}</span>
+              <span class="ml-2 text-indigo-700">→ {suggestion.detail}</span>
+              <p class="mt-1 text-[11px] text-indigo-600">{suggestion.documentation}</p>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
+  <div class="mt-3 grid gap-3 lg:grid-cols-2">
+    <div class="rounded border border-gray-200 bg-white p-3">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-700">Operation explorer</h3>
+      {#if operationOutline.length}
+        <ul class="mt-2 space-y-2 text-xs">
+          {#each operationOutline as operation}
+            <li class="rounded border border-gray-100 p-2">
+              <button
+                onclick={() => goToOperation(operation)}
+                class="font-mono text-blue-700 hover:text-blue-900"
+              >
+                {operation.type} {operation.name}
+              </button>
+              {#if operation.fields.length}
+                <p class="mt-1 text-gray-500">Fields: {operation.fields.join(', ')}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mt-2 text-xs text-gray-500">No operations discovered yet.</p>
+      {/if}
+    </div>
+
+    <div class="rounded border border-gray-200 bg-white p-3">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-700">Live diagnostics</h3>
+      {#if diagnostics.length}
+        <ul class="mt-2 space-y-1 text-xs">
+          {#each diagnostics as diagnostic}
+            <li class="rounded px-2 py-1 {diagnostic.level === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}">
+              <span class="font-semibold">{diagnostic.code}:</span> {diagnostic.message}
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mt-2 text-xs text-emerald-700">No diagnostics detected.</p>
+      {/if}
+    </div>
   </div>
 
   <SavedPresets />
@@ -317,6 +483,8 @@
     <p>💡 <strong>Tips:</strong></p>
     <ul class="list-disc list-inside space-y-1 mt-2">
       <li>Use Ctrl+Space for autocomplete (when schema is loaded)</li>
+      <li>Use Ctrl/Cmd+Enter to execute the query quickly</li>
+      <li>Use Ctrl/Cmd+Shift+P to open the global command palette</li>
       <li>Click "Format" to auto-indent your query</li>
       <li>Switch to "Visual Builder" tab to build queries visually</li>
       <li>Check the "Variables" tab to define query variables</li>

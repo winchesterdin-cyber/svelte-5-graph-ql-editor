@@ -1,15 +1,29 @@
 <script>
   import { graphqlStore } from '../stores/graphql-store.js';
-
+  import { LEVELS } from '../stores/logger.js';
+  import { getVariableDefinitions } from './editor-intelligence.js';
 
   let variables = $state('{}');
+  let query = $state('');
   let isValidJson = $state(true);
   let parsedVariables = $state({});
   let jsonError = $state('');
+  let schema = $state(null);
 
-  const unsubscribe = graphqlStore.subscribe(state => {
+  const unsubscribe = graphqlStore.subscribe((state) => {
     variables = state.variables;
+    query = state.query;
+    schema = state.schema;
     validateAndParseJson();
+  });
+
+  const variableHints = $derived(() => {
+    const definitions = getVariableDefinitions(query);
+    return Object.entries(definitions).map(([name, type]) => ({
+      name,
+      type,
+      hasValue: Object.prototype.hasOwnProperty.call(parsedVariables ?? {}, name),
+    }));
   });
 
   function handleVariablesChange(event) {
@@ -36,11 +50,19 @@
       const formatted = JSON.stringify(parsed, null, 2);
       graphqlStore.updateVariables(formatted);
       jsonError = '';
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Formatted variables JSON');
     } catch (error) {
       jsonError = error.message;
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Failed to format variables JSON', {
+        error: error.message,
+      });
     }
   }
 
+  /**
+   * Add a typed variable to the JSON editor payload.
+   * This keeps users in valid JSON state while using the visual form controls.
+   */
   function addVariable(name, value) {
     try {
       const current = JSON.parse(variables);
@@ -48,6 +70,10 @@
       const updated = JSON.stringify(current, null, 2);
       graphqlStore.updateVariables(updated);
       jsonError = '';
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Added variable', {
+        name,
+        type: typeof value,
+      });
     } catch (error) {
       jsonError = error.message;
     }
@@ -60,6 +86,7 @@
       const updated = JSON.stringify(current, null, 2);
       graphqlStore.updateVariables(updated);
       jsonError = '';
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Removed variable', { name });
     } catch (error) {
       jsonError = error.message;
     }
@@ -69,13 +96,13 @@
     const nameEl = document.getElementById('newVarName');
     const typeEl = document.getElementById('newVarType');
     const valueEl = document.getElementById('newVarValue');
-    
+
     if (!nameEl || !typeEl || !valueEl) return;
-    
+
     const name = nameEl.value;
     const type = typeEl.value;
     const valueInput = valueEl.value;
-    
+
     let value;
     try {
       if (type === 'number') {
@@ -87,7 +114,7 @@
       } else {
         value = valueInput;
       }
-      
+
       if (name) {
         addVariable(name, value);
         nameEl.value = '';
@@ -118,6 +145,25 @@
       </button>
     </div>
   </div>
+
+  {#if variableHints.length}
+    <div class="mb-3 rounded border border-blue-100 bg-blue-50 p-3 text-xs">
+      <p class="font-semibold text-blue-900">Variable schema hints</p>
+      <ul class="mt-2 space-y-1">
+        {#each variableHints as hint}
+          <li class="text-blue-800">
+            <code>${hint.name}</code> → <strong>{hint.type}</strong>
+            <span class={hint.hasValue ? 'text-emerald-700' : 'text-amber-700'}>
+              ({hint.hasValue ? 'value provided' : 'missing value'})
+            </span>
+          </li>
+        {/each}
+      </ul>
+      {#if schema}
+        <p class="mt-2 text-[11px] text-blue-700">Hints are inferred from operation signatures in the current query and validated against JSON object shape.</p>
+      {/if}
+    </div>
+  {/if}
 
   <div class="flex-1 flex space-x-4">
     <div class="flex-1 flex flex-col">
@@ -155,7 +201,7 @@
                   <span class="font-medium">Type:</span> {typeof value}
                 </div>
                 <div class="text-sm text-gray-600">
-                  <span class="font-medium">Value:</span> 
+                  <span class="font-medium">Value:</span>
                   <code class="bg-gray-100 px-1 rounded">{JSON.stringify(value)}</code>
                 </div>
               </div>
@@ -211,6 +257,7 @@
       <li>Use the visual editor to add/remove variables easily</li>
       <li>Variables are referenced in queries using $ syntax</li>
       <li>Click Format to auto-indent your JSON</li>
+      <li>Check variable schema hints to confirm expected GraphQL types</li>
     </ul>
   </div>
 </div>

@@ -8,6 +8,7 @@
     formatCellValue,
     getHighlightParts
   } from './table-utils.js';
+  import { buildHistoryDiff } from './history-diff.js';
 
 
   let viewMode = $state('formatted'); // 'formatted', 'raw', 'table'
@@ -25,6 +26,7 @@
   let filterLogTimeout;
   let stickyFirstColumn = $state(false);
   let csvDelimiter = $state(',');
+  let selectedHistoryIds = $state([]);
 
   // Subscribe to store changes
   graphqlStore.subscribe(state => {
@@ -122,6 +124,16 @@
       successRate: total ? Math.round((successCount / total) * 100) : 0
     };
   });
+
+  const selectedHistoryEntries = $derived(() =>
+    (storeState.history ?? []).filter((entry) => selectedHistoryIds.includes(entry.id)).slice(0, 2),
+  );
+
+  const historyDiff = $derived(() =>
+    selectedHistoryEntries.length === 2
+      ? buildHistoryDiff(selectedHistoryEntries[0], selectedHistoryEntries[1])
+      : null,
+  );
 
   const responseSummary = $derived(() => {
     if (!storeState.results) return null;
@@ -365,8 +377,30 @@
 
   function removeHistoryEntry(entry) {
     graphqlStore.removeHistoryEntry(entry.id);
+    selectedHistoryIds = selectedHistoryIds.filter((id) => id !== entry.id);
     graphqlStore.logUiEvent(LEVELS.INFO, 'Removed history entry', {
       entryId: entry.id,
+    });
+  }
+
+  /**
+   * Toggle an entry for diff comparison.
+   * We cap selections at two to keep the compare interaction focused.
+   */
+  function toggleHistoryCompare(entry) {
+    if (!entry?.id) return;
+    const isSelected = selectedHistoryIds.includes(entry.id);
+    if (isSelected) {
+      selectedHistoryIds = selectedHistoryIds.filter((id) => id !== entry.id);
+    } else if (selectedHistoryIds.length >= 2) {
+      selectedHistoryIds = [selectedHistoryIds[1], entry.id];
+    } else {
+      selectedHistoryIds = [...selectedHistoryIds, entry.id];
+    }
+
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Updated history diff selection', {
+      selectedCount: selectedHistoryIds.length,
+      selectedIds: selectedHistoryIds,
     });
   }
 
@@ -822,6 +856,12 @@
                 </div>
                 <div class="flex items-center gap-2">
                   <button
+                    onclick={() => toggleHistoryCompare(entry)}
+                    class="px-2 py-1 text-xs bg-white border border-gray-200 rounded hover:bg-gray-50"
+                  >
+                    {selectedHistoryIds.includes(entry.id) ? 'Compared' : 'Compare'}
+                  </button>
+                  <button
                     onclick={() => togglePinned(entry)}
                     class="px-2 py-1 text-xs bg-white border border-gray-200 rounded hover:bg-gray-50"
                   >
@@ -901,6 +941,22 @@
           {/each}
         {/if}
       </ul>
+
+      {#if historyDiff}
+        <div class="border-t border-gray-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+          <p class="font-semibold text-slate-900">History diff summary</p>
+          <p class="mt-1">Comparing selected entries: {historyDiff.leftId} ↔ {historyDiff.rightId}</p>
+          <ul class="mt-2 grid gap-1 sm:grid-cols-2">
+            <li>Query changed: {historyDiff.queryChanged ? 'Yes' : 'No'}</li>
+            <li>Variables changed: {historyDiff.variablesChanged ? 'Yes' : 'No'}</li>
+            <li>Endpoint changed: {historyDiff.endpointChanged ? 'Yes' : 'No'}</li>
+            <li>Status changed: {historyDiff.statusChanged ? 'Yes' : 'No'}</li>
+            <li>Result changed: {historyDiff.resultChanged ? 'Yes' : 'No'}</li>
+            <li>Result line delta: {historyDiff.resultLineDelta}</li>
+          </ul>
+          <p class="mt-2 font-medium text-slate-800">Total changed dimensions: {historyDiff.changeCount}</p>
+        </div>
+      {/if}
     </div>
   {/if}
 

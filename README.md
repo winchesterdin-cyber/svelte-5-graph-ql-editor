@@ -94,3 +94,18 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+## Batch 1 Enhancements (Items 1-10)
+
+The first enhancement batch now includes:
+
+- Query editor intelligence helpers (operation outline, live diagnostics, lightweight schema suggestions).
+- Keyboard shortcuts: `Ctrl/Cmd+Enter` (execute), `Ctrl/Cmd+Space` (autocomplete), `Ctrl/Cmd+Shift+P` (command palette).
+- Command palette quick actions for tab navigation, schema toggle, theme toggle, and endpoint profile save.
+- Endpoint manager profiles with local persistence and remove controls.
+- Variables editor schema hints derived from operation variable signatures.
+
+See `enhancementsPlan.md` for item-by-item implementation notes and validation logs.
+
+- Endpoint manager profiles now persist both endpoint and headers for faster environment switching.
+- Use the Results history "Compare" action on two entries to view a quick diff summary (query, variables, endpoint, status, result changes).
