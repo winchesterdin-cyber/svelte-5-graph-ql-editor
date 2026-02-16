@@ -35,3 +35,20 @@
 - Add UX polish for retention controls (persist policy in localStorage).
 - Expand template library with API-key and OAuth client credential variants.
 - Add copy-to-clipboard fallback UI for environments without clipboard API permissions.
+
+## Enhancement batch: diagnostics and editor workflows
+
+- Added deeper diagnostics for duplicate operations/fragments, unknown fragment spreads, multi-anonymous-operation documents, and variable definition/usage mismatches.
+- Added query document metrics to surface complexity and scale while authoring.
+- Added query minification and `Copy fetch()` snippet generation for better request sharing and debugging workflows.
+- Extended schema suggestions to prioritize prefix matching and include argument placeholders in insert text.
+- Added tests to cover all new diagnostics and document metric behavior.
+
+## Enhancement batch: diagnostics stabilization + reporting
+
+- Hardened structure scanning to ignore comment/string tokens when checking bracket balance.
+- Added deterministic diagnostics ordering to keep UI rendering and snapshots stable.
+- Added new diagnostics for insecure endpoint protocol and duplicate variable definitions.
+- Added complexity score/label metrics and warnings for deep/high-complexity query documents.
+- Added Query Editor diagnostics filters and markdown diagnostics export for bug-report workflows.
+- Added shortcut `Ctrl/Cmd+Shift+M` for query minification and updated user-facing guidance.

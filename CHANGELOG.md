@@ -33,6 +33,16 @@ All notable changes to this project will be documented in this file.
 - Added persisted query history with per-entry notes for annotating requests.
 - Added JSON error feedback in the variables editor.
 - Added auto-saved editor drafts with restore/dismiss controls in the query editor.
+- Added advanced diagnostics for duplicate operation/fragment names, unknown fragment spreads, and variable definition/usage mismatches.
+- Added a query document metrics card in the editor (chars, lines, operations, fragments, depth, top-level fields).
+- Added query minification and fetch-snippet copy actions in the Query Editor.
+- Improved schema autocomplete ranking and argument-aware insertion snippets.
+- Added `Ctrl/Cmd+Shift+F` keyboard shortcut for query formatting.
+- Added diagnostics filter controls (All/Errors/Warnings) and markdown diagnostics export in Query Editor.
+- Added complexity score/label metrics plus complexity warning diagnostics for deep/large queries.
+- Added `INSECURE_ENDPOINT` and `DUPLICATE_VARIABLE_DEFINITION` diagnostics.
+- Improved bracket diagnostics by ignoring tokens inside comments and quoted strings.
+- Added `Ctrl/Cmd+Shift+M` keyboard shortcut for query minification.
 
 ### Fixed
 

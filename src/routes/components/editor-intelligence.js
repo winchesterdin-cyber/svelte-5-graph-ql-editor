@@ -9,6 +9,12 @@ const OPERATION_REGEX =
 const FRAGMENT_REGEX =
   /fragment\s+([A-Za-z_][A-Za-z0-9_]*)\s+on\s+([A-Za-z_][A-Za-z0-9_]*)/g;
 
+const DIAGNOSTIC_LEVEL_WEIGHT = {
+  error: 0,
+  warn: 1,
+  info: 2,
+};
+
 export function getOperationOutline(query = "") {
   const operations = [];
   const source = String(query);
@@ -124,12 +130,16 @@ export function getDiagnostics({
     });
   }
 
-  const bracketCheck = getBalanceDiagnostics(source);
-  diagnostics.push(...bracketCheck);
+  diagnostics.push(...getBalanceDiagnostics(source));
 
   const operations = getOperationOutline(source).filter(
     (entry) => entry.type !== "fragment",
   );
+  diagnostics.push(...getOperationNameDiagnostics(operations));
+  diagnostics.push(...getFragmentDiagnostics(source));
+  diagnostics.push(...getVariableDiagnostics(source));
+  diagnostics.push(...getAnonymousOperationDiagnostics(source));
+
   if (source.trim() && operations.length === 0) {
     diagnostics.push({
       level: "error",
@@ -137,6 +147,9 @@ export function getDiagnostics({
       message: "No GraphQL operation detected in document.",
     });
   }
+
+  const metrics = getDocumentMetrics(source);
+  diagnostics.push(...getComplexityDiagnostics(metrics));
 
   const endpointText = String(endpoint).trim();
   if (!endpointText) {
@@ -151,7 +164,15 @@ export function getDiagnostics({
       : `https://${endpointText}`;
     try {
       // Validate URL format early to prevent avoidable request failures.
-      new URL(normalizedEndpoint);
+      const parsedUrl = new URL(normalizedEndpoint);
+      if (parsedUrl.protocol === "http:") {
+        diagnostics.push({
+          level: "warn",
+          code: "INSECURE_ENDPOINT",
+          message:
+            "Endpoint is using http://. Prefer https:// for production and shared environments.",
+        });
+      }
     } catch {
       diagnostics.push({
         level: "error",
@@ -206,7 +227,8 @@ export function getDiagnostics({
     }
   }
 
-  return diagnostics;
+  // Keep list deterministic so UI panels and tests are stable.
+  return sortDiagnostics(diagnostics);
 }
 
 function getBalanceDiagnostics(source) {
@@ -218,9 +240,10 @@ function getBalanceDiagnostics(source) {
     "[": "]",
   };
   const closing = new Set(Object.values(pairs));
+  const normalizedSource = normalizeQueryForStructureScan(source);
 
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
+  for (let index = 0; index < normalizedSource.length; index += 1) {
+    const char = normalizedSource[index];
     if (pairs[char]) {
       stack.push({ char, index });
       continue;
@@ -271,13 +294,58 @@ export function getSchemaSuggestions({
 
   return fields
     .filter((field) => field.name.toLowerCase().includes(loweredToken))
+    .sort((left, right) => {
+      const leftLower = left.name.toLowerCase();
+      const rightLower = right.name.toLowerCase();
+      const leftStartsWith = leftLower.startsWith(loweredToken);
+      const rightStartsWith = rightLower.startsWith(loweredToken);
+      if (leftStartsWith !== rightStartsWith) {
+        return leftStartsWith ? -1 : 1;
+      }
+      return leftLower.localeCompare(rightLower);
+    })
     .slice(0, limit)
     .map((field) => ({
       label: field.name,
       detail: field.type?.name ?? field.type?.kind ?? "Unknown",
       documentation: field.description ?? "No schema description available.",
-      insertText: field.name,
+      insertText: buildSuggestionInsertText(field),
     }));
+}
+
+/**
+ * Return high-level document metrics for visibility in the editor UI.
+ */
+export function getDocumentMetrics(query = "") {
+  const source = String(query);
+  const outline = getOperationOutline(source);
+  const operations = outline.filter((entry) => entry.type !== "fragment");
+  const fragments = outline.filter((entry) => entry.type === "fragment");
+  const lines = source.split("\n");
+  const nonEmptyLines = lines.map((line) => line.trim()).filter(Boolean);
+
+  const maxSelectionDepth = getMaxSelectionDepth(source);
+  const complexityScore =
+    operations.length * 5 +
+    fragments.length * 3 +
+    maxSelectionDepth * 4 +
+    Math.ceil(source.length / 120) +
+    Math.ceil(nonEmptyLines.length / 10);
+
+  return {
+    characterCount: source.length,
+    lineCount: nonEmptyLines.length,
+    operationCount: operations.length,
+    fragmentCount: fragments.length,
+    maxSelectionDepth,
+    topLevelFieldCount: operations.reduce(
+      (count, operation) => count + (operation.fields?.length ?? 0),
+      0,
+    ),
+    complexityScore,
+    complexityLabel:
+      complexityScore >= 80 ? "high" : complexityScore >= 35 ? "medium" : "low",
+  };
 }
 
 export function getVariableDefinitions(query = "") {
@@ -295,4 +363,279 @@ export function getVariableDefinitions(query = "") {
   });
 
   return definitions;
+}
+
+function getOperationNameDiagnostics(operations) {
+  const diagnostics = [];
+  const operationNameCounts = new Map();
+
+  operations.forEach((entry) => {
+    if (!entry.name || entry.isAnonymous || entry.name === "UnnamedOperation") {
+      return;
+    }
+    operationNameCounts.set(
+      entry.name,
+      (operationNameCounts.get(entry.name) ?? 0) + 1,
+    );
+  });
+
+  operationNameCounts.forEach((count, operationName) => {
+    if (count <= 1) return;
+    diagnostics.push({
+      level: "error",
+      code: "DUPLICATE_OPERATION_NAME",
+      message: `Operation name "${operationName}" is duplicated ${count} times.`,
+    });
+  });
+
+  return diagnostics;
+}
+
+function getFragmentDiagnostics(source) {
+  const diagnostics = [];
+  const definitions = [
+    ...source.matchAll(/fragment\s+([A-Za-z_][A-Za-z0-9_]*)\s+on\s+/g),
+  ].map((match) => match[1]);
+  const spreads = [
+    ...source.matchAll(/\.\.\.\s*([A-Za-z_][A-Za-z0-9_]*)/g),
+  ].map((match) => match[1]);
+
+  const definitionCounts = new Map();
+  definitions.forEach((name) => {
+    definitionCounts.set(name, (definitionCounts.get(name) ?? 0) + 1);
+  });
+
+  definitionCounts.forEach((count, name) => {
+    if (count <= 1) return;
+    diagnostics.push({
+      level: "error",
+      code: "DUPLICATE_FRAGMENT_NAME",
+      message: `Fragment "${name}" is defined ${count} times.`,
+    });
+  });
+
+  spreads.forEach((spreadName) => {
+    if (definitions.includes(spreadName)) return;
+    diagnostics.push({
+      level: "error",
+      code: "UNKNOWN_FRAGMENT_SPREAD",
+      message: `Fragment spread "${spreadName}" has no matching definition.`,
+    });
+  });
+
+  definitions.forEach((definitionName) => {
+    if (spreads.includes(definitionName)) return;
+    diagnostics.push({
+      level: "warn",
+      code: "UNUSED_FRAGMENT",
+      message: `Fragment "${definitionName}" is defined but never spread.`,
+    });
+  });
+
+  return diagnostics;
+}
+
+function getVariableDiagnostics(source) {
+  const diagnostics = [];
+  const definitions = getVariableDefinitions(source);
+  const definedNames = new Set(Object.keys(definitions));
+  const usedNames = new Set();
+
+  const duplicateDefinitionMatches = [
+    ...source.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)\s*:/g),
+  ].map((match) => match[1]);
+  const variableDefinitionCounts = new Map();
+  duplicateDefinitionMatches.forEach((name) => {
+    variableDefinitionCounts.set(
+      name,
+      (variableDefinitionCounts.get(name) ?? 0) + 1,
+    );
+  });
+  variableDefinitionCounts.forEach((count, name) => {
+    if (count <= 1) return;
+    diagnostics.push({
+      level: "error",
+      code: "DUPLICATE_VARIABLE_DEFINITION",
+      message: `Variable "$${name}" is defined ${count} times in operation signatures.`,
+    });
+  });
+
+  const sourceWithoutSignatures = source
+    .replace(
+      /\b(query|mutation|subscription)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)/g,
+      "$1",
+    )
+    .replace(/\b(query|mutation|subscription)\s*\(([^)]*)\)/g, "$1");
+  const variableUsageMatches = sourceWithoutSignatures.matchAll(
+    /\$([A-Za-z_][A-Za-z0-9_]*)/g,
+  );
+
+  for (const usageMatch of variableUsageMatches) {
+    usedNames.add(usageMatch[1]);
+  }
+
+  usedNames.forEach((name) => {
+    if (definedNames.has(name)) return;
+    diagnostics.push({
+      level: "warn",
+      code: "UNDEFINED_VARIABLE",
+      message: `Variable "$${name}" is used but not declared in an operation signature.`,
+    });
+  });
+
+  definedNames.forEach((name) => {
+    if (usedNames.has(name)) return;
+    diagnostics.push({
+      level: "warn",
+      code: "UNUSED_VARIABLE",
+      message: `Variable "$${name}" is declared but never used in selections.`,
+    });
+  });
+
+  return diagnostics;
+}
+
+function getAnonymousOperationDiagnostics(source) {
+  const anonymousMatches = [
+    ...source.matchAll(/\b(query|mutation|subscription)\s*\{/g),
+  ];
+  if (anonymousMatches.length <= 1) return [];
+
+  return [
+    {
+      level: "error",
+      code: "MULTIPLE_ANONYMOUS_OPERATIONS",
+      message:
+        "Only one anonymous operation is allowed per GraphQL document. Name additional operations.",
+    },
+  ];
+}
+
+function getComplexityDiagnostics(metrics) {
+  const diagnostics = [];
+
+  if (metrics.maxSelectionDepth >= 6) {
+    diagnostics.push({
+      level: "warn",
+      code: "DEEP_SELECTION",
+      message:
+        "Selection depth is high (6+). Consider trimming nested fields to reduce resolver load.",
+    });
+  }
+
+  if (metrics.characterCount >= 3000) {
+    diagnostics.push({
+      level: "warn",
+      code: "LARGE_QUERY_DOCUMENT",
+      message:
+        "Query document is large (3000+ chars). Consider fragments or splitting operations for readability.",
+    });
+  }
+
+  if (metrics.complexityLabel === "high") {
+    diagnostics.push({
+      level: "warn",
+      code: "HIGH_COMPLEXITY_QUERY",
+      message:
+        "Computed complexity score is high. Validate this document carefully before repeated execution.",
+    });
+  }
+
+  return diagnostics;
+}
+
+function getMaxSelectionDepth(source) {
+  let depth = 0;
+  let maxDepth = 0;
+  const normalizedSource = normalizeQueryForStructureScan(source);
+
+  for (const char of normalizedSource) {
+    if (char === "{") {
+      depth += 1;
+      maxDepth = Math.max(maxDepth, depth);
+    }
+    if (char === "}") {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+
+  // Exclude the document root level to better represent nested selection depth.
+  return Math.max(0, maxDepth - 1);
+}
+
+function buildSuggestionInsertText(field) {
+  const argCount = field?.args?.length ?? 0;
+  const hasNestedSelection = isObjectLikeField(field?.type);
+
+  const base = !argCount
+    ? field.name
+    : `${field.name}(${field.args.map((arg) => `${arg.name}: $${arg.name}`).join(", ")})`;
+
+  // Encourage explicit nested selection when field resolves to object-like data.
+  if (hasNestedSelection) {
+    return `${base} {\n  __typename\n}`;
+  }
+
+  return base;
+}
+
+function isObjectLikeField(type) {
+  if (!type) return false;
+  if (type.kind === "OBJECT") return true;
+  if (type.kind === "LIST") {
+    return isObjectLikeField(type.ofType);
+  }
+  if (type.ofType) {
+    return isObjectLikeField(type.ofType);
+  }
+
+  return false;
+}
+
+function normalizeQueryForStructureScan(source) {
+  const chars = [...String(source)];
+  let inString = false;
+  let inComment = false;
+
+  for (let index = 0; index < chars.length; index += 1) {
+    const current = chars[index];
+    const prev = chars[index - 1];
+
+    if (inComment) {
+      if (current === "\n") {
+        inComment = false;
+      } else {
+        chars[index] = " ";
+      }
+      continue;
+    }
+
+    if (!inString && current === "#") {
+      inComment = true;
+      chars[index] = " ";
+      continue;
+    }
+
+    if (current === '"' && prev !== "\\") {
+      inString = !inString;
+      chars[index] = " ";
+      continue;
+    }
+
+    if (inString) {
+      chars[index] = " ";
+    }
+  }
+
+  return chars.join("");
+}
+
+function sortDiagnostics(entries) {
+  return [...entries].sort((left, right) => {
+    const levelWeightDiff =
+      (DIAGNOSTIC_LEVEL_WEIGHT[left.level] ?? 99) -
+      (DIAGNOSTIC_LEVEL_WEIGHT[right.level] ?? 99);
+    if (levelWeightDiff !== 0) return levelWeightDiff;
+    return String(left.code).localeCompare(String(right.code));
+  });
 }
