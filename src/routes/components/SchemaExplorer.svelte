@@ -5,6 +5,7 @@
 
 
   let searchTerm = $state('');
+  let debouncedSearchTerm = $state('');
   let selectedType = $state(null);
   let storeState = $state({});
   
@@ -19,9 +20,17 @@
   let queryType = $state(null);
   let mutationType = $state(null);
 
+  $effect(() => {
+    if (!debouncedSearchTerm && searchTerm) {
+      debouncedSearchTerm = searchTerm;
+    }
+  });
+
   run(() => {
+    const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
+    // Keep schema filtering memo-friendly by deriving from debounced input only.
     filteredTypes = storeState.schema?.types?.filter(type => 
-      type.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      type.name.toLowerCase().includes(normalizedSearch) &&
       !type.name.startsWith('__')
     ) || [];
     queryType = storeState.schema?.queryType;
@@ -181,8 +190,17 @@
     graphqlStore.updateQueryStructure(newStructure);
   }
 
+  let searchDebounceTimeout;
+
   function handleSearchChange(event) {
     searchTerm = event.target.value;
+    if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = setTimeout(() => {
+      debouncedSearchTerm = searchTerm;
+      graphqlStore.logUiEvent('INFO', 'Updated schema explorer search filter', {
+        valueLength: debouncedSearchTerm.length,
+      });
+    }, 180);
   }
 </script>
 

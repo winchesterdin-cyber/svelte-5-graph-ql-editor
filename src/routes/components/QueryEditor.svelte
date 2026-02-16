@@ -23,6 +23,7 @@
   let cursorIndex = $state(0);
   let showSuggestions = $state(false);
   let selectedSuggestionIndex = $state(0);
+  let requestTemplates = $state([]);
 
   // Subscribe to store changes
   $effect(() => {
@@ -42,7 +43,7 @@
   });
 
   const operationOutline = $derived(() => getOperationOutline(query));
-  const diagnostics = $derived(() => getDiagnostics({ query, endpoint, variables }));
+  const diagnostics = $derived(() => getDiagnostics({ query, endpoint, variables, headers }));
   const suggestions = $derived(() => getSchemaSuggestions({ schema, query, cursorIndex }));
 
   const draftToRestore = $derived(() => {
@@ -56,6 +57,7 @@
 
   onMount(() => {
     graphqlStore.loadDraft();
+    requestTemplates = graphqlStore.getRequestTemplates();
   });
 
   function handleQueryChange(event) {
@@ -81,6 +83,15 @@
 
   async function executeQuery() {
     await graphqlStore.executeQuery();
+  }
+
+  /**
+   * Apply a reusable request starter to reduce repetitive setup work.
+   */
+  function applyRequestTemplate(event) {
+    const templateId = event.target.value;
+    if (!templateId) return;
+    graphqlStore.applyRequestTemplate(templateId);
   }
 
   function cancelQuery() {
@@ -364,6 +375,16 @@
         </button>
       {/if}
     </div>
+  </div>
+
+  <div class="mb-3 flex items-center gap-2">
+    <label for="request-template" class="text-xs font-medium text-gray-600">Templates</label>
+    <select id="request-template" onchange={applyRequestTemplate} class="rounded border border-gray-200 px-2 py-1 text-xs">
+      <option value="">Select request template</option>
+      {#each requestTemplates as template}
+        <option value={template.id}>{template.label}</option>
+      {/each}
+    </select>
   </div>
 
   {#if draftToRestore}

@@ -24,6 +24,8 @@ export function buildHistoryDiff(leftEntry, rightEntry) {
   const rightLines = (rightResult ?? "").split("\n");
   const lineDelta = Math.abs(leftLines.length - rightLines.length);
 
+  const nestedDiff = buildNestedPathDiff(leftEntry.result, rightEntry.result);
+
   return {
     leftId: leftEntry.id,
     rightId: rightEntry.id,
@@ -33,6 +35,9 @@ export function buildHistoryDiff(leftEntry, rightEntry) {
     statusChanged,
     resultChanged,
     resultLineDelta: lineDelta,
+    changedPaths: nestedDiff.changedPaths,
+    changedPathCount: nestedDiff.changedPaths.length,
+    sampleChangedPaths: nestedDiff.changedPaths.slice(0, 6),
     changeCount: [
       queryChanged,
       variablesChanged,
@@ -53,4 +58,60 @@ function safeJsonStringify(value) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Walk both JSON payloads and record changed paths.
+ * This intentionally tracks value-level deltas only (no move detection).
+ */
+function buildNestedPathDiff(leftValue, rightValue, basePath = "") {
+  const changedPaths = [];
+  if (Object.is(leftValue, rightValue)) {
+    return { changedPaths };
+  }
+
+  const leftType = getValueType(leftValue);
+  const rightType = getValueType(rightValue);
+  if (leftType !== rightType) {
+    return { changedPaths: [basePath || "(root)"] };
+  }
+
+  if (leftType === "array") {
+    const maxLength = Math.max(leftValue.length, rightValue.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      const path = `${basePath}[${index}]`;
+      changedPaths.push(
+        ...buildNestedPathDiff(leftValue[index], rightValue[index], path)
+          .changedPaths,
+      );
+    }
+    return { changedPaths: uniquePaths(changedPaths) };
+  }
+
+  if (leftType === "object") {
+    const keys = new Set([
+      ...Object.keys(leftValue ?? {}),
+      ...Object.keys(rightValue ?? {}),
+    ]);
+    for (const key of keys) {
+      const path = basePath ? `${basePath}.${key}` : key;
+      changedPaths.push(
+        ...buildNestedPathDiff(leftValue?.[key], rightValue?.[key], path)
+          .changedPaths,
+      );
+    }
+    return { changedPaths: uniquePaths(changedPaths) };
+  }
+
+  return { changedPaths: [basePath || "(root)"] };
+}
+
+function getValueType(value) {
+  if (Array.isArray(value)) return "array";
+  if (value && typeof value === "object") return "object";
+  return typeof value;
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths.filter(Boolean))];
 }
