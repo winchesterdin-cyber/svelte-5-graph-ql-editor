@@ -21,6 +21,7 @@ test("getDiagnostics reports endpoint and JSON issues", () => {
   const diagnostics = getDiagnostics({
     query: "query GetUsers { users { id }",
     endpoint: "",
+    headers: "{ invalid",
     variables: "{ invalid",
   });
 
@@ -28,7 +29,17 @@ test("getDiagnostics reports endpoint and JSON issues", () => {
     diagnostics.some((entry) => entry.code === "MISSING_CLOSING_TOKEN"),
   );
   assert.ok(diagnostics.some((entry) => entry.code === "MISSING_ENDPOINT"));
+  assert.ok(diagnostics.some((entry) => entry.code === "HEADERS_JSON"));
   assert.ok(diagnostics.some((entry) => entry.code === "VARIABLES_JSON"));
+});
+
+test("getDiagnostics validates endpoint URL format", () => {
+  const diagnostics = getDiagnostics({
+    query: "query GetUsers { users { id } }",
+    endpoint: "ht^tp://bad-url",
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "ENDPOINT_URL"));
 });
 
 test("getSchemaSuggestions filters root fields by token", () => {
@@ -70,4 +81,21 @@ test("getVariableDefinitions extracts declared variable names and types", () => 
     first: "Int!",
     search: "String",
   });
+});
+
+test("getOperationOutline includes fragments and anonymous operations", () => {
+  const outline = getOperationOutline(`query { viewer { id } }
+fragment UserFields on User { id name }`);
+
+  assert.ok(
+    outline.some((entry) => entry.type === "query" && entry.isAnonymous),
+  );
+  assert.ok(
+    outline.some(
+      (entry) =>
+        entry.type === "fragment" &&
+        entry.name === "UserFields" &&
+        entry.onType === "User",
+    ),
+  );
 });

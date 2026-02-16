@@ -25,6 +25,15 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **History filters** and status summaries for recent requests.
 - **Saved Workspaces** to store and reapply endpoint/query/variable combinations.
 - **Auto-saved Drafts** to recover in-progress editor changes after refreshes.
+- **UI Preference Persistence** for active tab, schema visibility, and theme mode between sessions.
+- **Reset UI Preferences** control to quickly return shell state to defaults.
+- **Expanded Diagnostics** for malformed endpoint URLs and invalid headers JSON.
+- **Request Templates** to quickly start common auth and pagination request patterns.
+- **Saved Workspace Import/Export** for sharing reusable endpoint/query setups with metadata.
+- **History Retention Controls** to cap stored entries by count and age.
+- **Nested History Diff Paths** to inspect field-level JSON changes between runs.
+- **Operation Outline Enhancements** including fragment and anonymous operation visibility.
+- **Results View Persistence** for preferred mode/filter/CSV delimiter/sticky column settings.
 
 ## Getting Started
 
@@ -105,7 +114,7 @@ The first enhancement batch now includes:
 - Endpoint manager profiles with local persistence and remove controls.
 - Variables editor schema hints derived from operation variable signatures.
 
-See `enhancementsPlan.md` for item-by-item implementation notes and validation logs.
+See `implementation-plan.md` for item-by-item implementation notes and validation logs.
 
 - Endpoint manager profiles now persist both endpoint and headers for faster environment switching.
 - Use the Results history "Compare" action on two entries to view a quick diff summary (query, variables, endpoint, status, result changes).

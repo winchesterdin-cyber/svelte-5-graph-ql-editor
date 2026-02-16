@@ -5,7 +5,9 @@
  */
 
 const OPERATION_REGEX =
-  /(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)?\s*(\([^)]*\))?/g;
+  /(query|mutation|subscription)(?:\s+([A-Za-z_][A-Za-z0-9_]*))?\s*(\([^)]*\))?/g;
+const FRAGMENT_REGEX =
+  /fragment\s+([A-Za-z_][A-Za-z0-9_]*)\s+on\s+([A-Za-z_][A-Za-z0-9_]*)/g;
 
 export function getOperationOutline(query = "") {
   const operations = [];
@@ -13,22 +15,39 @@ export function getOperationOutline(query = "") {
   let match;
 
   while ((match = OPERATION_REGEX.exec(source)) !== null) {
-    const [, type, rawName = "UnnamedOperation", variables = ""] = match;
+    const [, type, rawName = "", variables = ""] = match;
+    const isAnonymous = !rawName;
     operations.push({
       type,
-      name: rawName || "UnnamedOperation",
+      name: rawName || "AnonymousOperation",
       variables,
       index: match.index,
+      isAnonymous,
       fields: getTopLevelFieldsForOperation(source, match.index),
     });
   }
 
+  let fragmentMatch;
+  while ((fragmentMatch = FRAGMENT_REGEX.exec(source)) !== null) {
+    operations.push({
+      type: "fragment",
+      name: fragmentMatch[1],
+      onType: fragmentMatch[2],
+      variables: "",
+      index: fragmentMatch.index,
+      isAnonymous: false,
+      fields: getTopLevelFieldsForOperation(source, fragmentMatch.index),
+    });
+  }
+
+  // Keep backwards-compatible fallback for shorthand documents.
   if (!operations.length && source.trim()) {
     operations.push({
       type: "query",
       name: "UnnamedOperation",
       variables: "",
       index: 0,
+      isAnonymous: true,
       fields: getTopLevelFieldsForOperation(source, 0),
     });
   }
@@ -92,6 +111,7 @@ export function getDiagnostics({
   query = "",
   endpoint = "",
   variables = "",
+  headers = "",
 } = {}) {
   const diagnostics = [];
   const source = String(query);
@@ -107,7 +127,9 @@ export function getDiagnostics({
   const bracketCheck = getBalanceDiagnostics(source);
   diagnostics.push(...bracketCheck);
 
-  const operations = getOperationOutline(source);
+  const operations = getOperationOutline(source).filter(
+    (entry) => entry.type !== "fragment",
+  );
   if (source.trim() && operations.length === 0) {
     diagnostics.push({
       level: "error",
@@ -116,12 +138,52 @@ export function getDiagnostics({
     });
   }
 
-  if (!String(endpoint).trim()) {
+  const endpointText = String(endpoint).trim();
+  if (!endpointText) {
     diagnostics.push({
       level: "warn",
       code: "MISSING_ENDPOINT",
       message: "Endpoint is required before execution.",
     });
+  } else {
+    const normalizedEndpoint = endpointText.startsWith("http")
+      ? endpointText
+      : `https://${endpointText}`;
+    try {
+      // Validate URL format early to prevent avoidable request failures.
+      new URL(normalizedEndpoint);
+    } catch {
+      diagnostics.push({
+        level: "error",
+        code: "ENDPOINT_URL",
+        message:
+          "Endpoint must be a valid URL (for example: https://api.example.com/graphql).",
+      });
+    }
+  }
+
+  const headersText = String(headers).trim();
+  if (headersText) {
+    try {
+      const parsedHeaders = JSON.parse(headersText);
+      if (
+        !parsedHeaders ||
+        typeof parsedHeaders !== "object" ||
+        Array.isArray(parsedHeaders)
+      ) {
+        diagnostics.push({
+          level: "error",
+          code: "HEADERS_SHAPE",
+          message: "Headers JSON must be an object.",
+        });
+      }
+    } catch (error) {
+      diagnostics.push({
+        level: "error",
+        code: "HEADERS_JSON",
+        message: `Headers JSON parse error: ${error.message}`,
+      });
+    }
   }
 
   const variablesText = String(variables).trim();

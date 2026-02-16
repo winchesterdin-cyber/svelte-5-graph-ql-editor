@@ -829,6 +829,7 @@ const DEMO_SCHEMAS = {
 
 function createGraphQLStore() {
   const HISTORY_LIMIT = 50;
+  const DEFAULT_HISTORY_MAX_AGE_DAYS = 0;
   const HISTORY_NOTE_MAX_LENGTH = 280;
   const LOG_LIMIT = 200;
   const DEFAULT_TIMEOUT_MS = 15000;
@@ -841,6 +842,35 @@ function createGraphQLStore() {
   let activeController = null;
   let activeTimeoutId = null;
   let draftSaveTimeoutId = null;
+
+  const normalizeErrorMessage = (
+    prefix,
+    error,
+    fallback = "Unexpected error",
+  ) => {
+    const detail = error?.message ?? fallback;
+    return `${prefix}: ${detail}`;
+  };
+
+  const pruneHistoryEntries = (entries = [], historyPolicy = {}) => {
+    const maxEntries = Math.max(
+      1,
+      Number(historyPolicy?.maxEntries ?? HISTORY_LIMIT) || HISTORY_LIMIT,
+    );
+    const maxAgeDays = Math.max(
+      0,
+      Number(historyPolicy?.maxAgeDays ?? DEFAULT_HISTORY_MAX_AGE_DAYS) ||
+        DEFAULT_HISTORY_MAX_AGE_DAYS,
+    );
+    const maxAgeMs = maxAgeDays > 0 ? maxAgeDays * 24 * 60 * 60 * 1000 : null;
+    const now = Date.now();
+    const ageFiltered = entries.filter((entry) => {
+      if (!maxAgeMs) return true;
+      const timestamp = new Date(entry.timestamp ?? 0).getTime();
+      return Number.isFinite(timestamp) && now - timestamp <= maxAgeMs;
+    });
+    return ageFiltered.slice(0, maxEntries);
+  };
 
   /**
    * Normalize user-supplied notes to keep history entries tidy and safe to render.
@@ -868,7 +898,7 @@ function createGraphQLStore() {
       return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       logEvent(LEVELS.WARN, "Failed to parse saved history entries", {
-        error: error.message,
+        error: normalizeErrorMessage("Saved workspace parse failure", error),
       });
       return [];
     }
@@ -902,9 +932,14 @@ function createGraphQLStore() {
     schema: null,
     loading: false,
     error: null,
-    history: readHistoryFromStorage()
-      .map(normalizeHistoryEntry)
-      .slice(0, HISTORY_LIMIT),
+    historyPolicy: {
+      maxEntries: HISTORY_LIMIT,
+      maxAgeDays: DEFAULT_HISTORY_MAX_AGE_DAYS,
+    },
+    history: pruneHistoryEntries(
+      readHistoryFromStorage().map(normalizeHistoryEntry),
+      { maxEntries: HISTORY_LIMIT, maxAgeDays: DEFAULT_HISTORY_MAX_AGE_DAYS },
+    ),
     lastExecution: null,
     requestTimeoutMs: DEFAULT_TIMEOUT_MS,
     retryPolicy: {
@@ -946,7 +981,7 @@ function createGraphQLStore() {
       return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       recordLog(LEVELS.WARN, "Failed to parse saved workspaces", {
-        error: error.message,
+        error: normalizeErrorMessage("Draft parse failure", error),
       });
       return [];
     }
@@ -1025,17 +1060,17 @@ function createGraphQLStore() {
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
     } catch (error) {
       recordLog(LEVELS.ERROR, "Failed to persist history entries", {
-        error: error.message,
+        error: normalizeErrorMessage("History persistence failure", error),
       });
     }
   };
 
   const addHistoryEntry = (entry) => {
     update((state) => {
-      const nextHistory = [
-        normalizeHistoryEntry(entry),
-        ...state.history,
-      ].slice(0, HISTORY_LIMIT);
+      const nextHistory = pruneHistoryEntries(
+        [normalizeHistoryEntry(entry), ...(state.history ?? [])],
+        state.historyPolicy,
+      );
       persistHistory(nextHistory);
       return {
         ...state,
@@ -1062,7 +1097,7 @@ function createGraphQLStore() {
           [...merged].reverse().map((entry) => [entry.id, entry]),
         ).values(),
       ).reverse();
-      const nextHistory = deduped.slice(0, HISTORY_LIMIT);
+      const nextHistory = pruneHistoryEntries(deduped, state.historyPolicy);
       persistHistory(nextHistory);
       return { ...state, history: nextHistory };
     });
@@ -1076,7 +1111,22 @@ function createGraphQLStore() {
   const buildHistoryExportPayload = (historyEntries) => ({
     version: 1,
     exportedAt: new Date().toISOString(),
+    metadata: {
+      source: "graphql-visualizer",
+      schemaVersion: 1,
+    },
     entries: historyEntries,
+  });
+
+  const buildPresetExportPayload = (presets) => ({
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    metadata: {
+      source: "graphql-visualizer",
+      schemaVersion: 2,
+      presetCount: presets.length,
+    },
+    entries: presets,
   });
 
   /**
@@ -1207,6 +1257,46 @@ function createGraphQLStore() {
     headers: state.headers,
     updatedAt: new Date().toISOString(),
   });
+
+  const REQUEST_TEMPLATES = {
+    bearerAuth: {
+      id: "bearerAuth",
+      label: "Bearer Auth Request",
+      query: `query Viewer {
+  viewer {
+    id
+    name
+  }
+}`,
+      variables: "{}",
+      headers: `{
+  "Authorization": "Bearer <token>"
+}`,
+    },
+    cursorPagination: {
+      id: "cursorPagination",
+      label: "Cursor Pagination",
+      query: `query ListItems($first: Int!, $after: String) {
+  items(first: $first, after: $after) {
+    edges {
+      cursor
+      node {
+        id
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}`,
+      variables: `{
+  "first": 20,
+  "after": null
+}`,
+      headers: "{}",
+    },
+  };
 
   return {
     subscribe,
@@ -1515,6 +1605,59 @@ function createGraphQLStore() {
       });
     },
 
+    getRequestTemplates: () => Object.values(REQUEST_TEMPLATES),
+
+    applyRequestTemplate: (templateId) => {
+      const template = REQUEST_TEMPLATES[templateId];
+      if (!template) {
+        recordLog(LEVELS.WARN, "Skipped applying unknown request template", {
+          templateId,
+        });
+        return;
+      }
+      update((state) => {
+        const nextState = {
+          ...state,
+          query: template.query,
+          variables: template.variables,
+          headers: template.headers,
+          queryStructure: parseQuery(template.query),
+          error: null,
+        };
+        scheduleDraftSave(buildDraftPayload(nextState));
+        return nextState;
+      });
+      recordLog(LEVELS.INFO, "Applied request template", { templateId });
+    },
+
+    setHistoryPolicy: ({ maxEntries, maxAgeDays }) => {
+      const normalizedPolicy = {
+        maxEntries: Number.isFinite(maxEntries)
+          ? Math.max(1, Math.round(maxEntries))
+          : HISTORY_LIMIT,
+        maxAgeDays: Number.isFinite(maxAgeDays)
+          ? Math.max(0, Math.round(maxAgeDays))
+          : DEFAULT_HISTORY_MAX_AGE_DAYS,
+      };
+      update((state) => {
+        const nextHistory = pruneHistoryEntries(
+          state.history ?? [],
+          normalizedPolicy,
+        );
+        persistHistory(nextHistory);
+        return {
+          ...state,
+          historyPolicy: normalizedPolicy,
+          history: nextHistory,
+        };
+      });
+      recordLog(
+        LEVELS.INFO,
+        "Updated history retention policy",
+        normalizedPolicy,
+      );
+    },
+
     setRequestTimeoutMs: (timeoutMs) => {
       const normalizedTimeout =
         Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.round(timeoutMs) : 0;
@@ -1614,7 +1757,7 @@ function createGraphQLStore() {
         importHistoryEntries(entries);
       } catch (error) {
         recordLog(LEVELS.ERROR, "Failed to parse history import payload", {
-          error: error.message,
+          error: normalizeErrorMessage("History import parsing failure", error),
         });
       }
     },
@@ -1775,6 +1918,50 @@ function createGraphQLStore() {
         count: presets.length,
       });
       update((state) => ({ ...state, savedPresets: presets }));
+    },
+
+    exportPresets: () => {
+      const currentState = get(store);
+      const payload = buildPresetExportPayload(currentState.savedPresets ?? []);
+      recordLog(LEVELS.INFO, "Exported saved workspaces", {
+        count: payload.entries.length,
+      });
+      return JSON.stringify(payload, null, 2);
+    },
+
+    importPresetsFromJson: (rawJson) => {
+      if (!rawJson || !rawJson.trim()) {
+        recordLog(LEVELS.WARN, "Skipped importing empty workspace payload");
+        return;
+      }
+      try {
+        const parsed = JSON.parse(rawJson);
+        const entries = Array.isArray(parsed) ? parsed : parsed?.entries;
+        if (!Array.isArray(entries)) {
+          recordLog(LEVELS.WARN, "Workspace import payload was not valid");
+          return;
+        }
+        update((state) => {
+          const merged = [...entries, ...(state.savedPresets ?? [])];
+          const deduped = Array.from(
+            new Map(
+              merged.map((preset) => [preset.name?.toLowerCase(), preset]),
+            ).values(),
+          );
+          persistPresets(deduped);
+          return { ...state, savedPresets: deduped };
+        });
+        recordLog(LEVELS.INFO, "Imported saved workspaces from JSON", {
+          count: entries.length,
+        });
+      } catch (error) {
+        recordLog(LEVELS.ERROR, "Failed to parse workspace import payload", {
+          error: normalizeErrorMessage(
+            "Workspace import parsing failure",
+            error,
+          ),
+        });
+      }
     },
 
     savePreset: (name) => {

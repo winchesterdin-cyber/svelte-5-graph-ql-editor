@@ -8,6 +8,11 @@
   import SchemaExplorer from './components/SchemaExplorer.svelte';
   import ExampleQueries from './components/ExampleQueries.svelte';
   import { graphqlStore } from './stores/graphql-store.js';
+  import {
+    DEFAULT_UI_PREFERENCES,
+    parseUiPreferences,
+    serializeUiPreferences
+  } from './stores/ui-preferences.js';
 
   let activeTab = $state('editor');
   let showSchema = $state(false);
@@ -18,6 +23,7 @@
   let endpointProfiles = $state([]);
   let showCommandPalette = $state(false);
   const ENDPOINT_PROFILES_STORAGE_KEY = 'graphql-editor-endpoint-profiles';
+  const UI_PREFERENCES_STORAGE_KEY = 'graphql-editor-ui-preferences';
 
   const tabs = [
     { id: 'editor', label: 'Query Editor' },
@@ -38,10 +44,12 @@
   function switchTab(tabId) {
     activeTab = tabId;
     showMobileMenu = false;
+    graphqlStore.logUiEvent('INFO', 'Switched main application tab', { tabId });
   }
 
   function toggleSchema() {
     showSchema = !showSchema;
+    graphqlStore.logUiEvent('INFO', 'Toggled schema explorer visibility', { visible: showSchema });
   }
 
   function toggleMobileMenu() {
@@ -50,6 +58,31 @@
 
   function toggleDarkMode() {
     darkMode = !darkMode;
+    graphqlStore.logUiEvent('INFO', 'Toggled theme preference', { darkMode });
+  }
+
+  /**
+   * Persist frequently used shell preferences so the editor resumes in a familiar state.
+   */
+  function persistUiPreferences() {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(
+      UI_PREFERENCES_STORAGE_KEY,
+      serializeUiPreferences({ activeTab, showSchema, darkMode })
+    );
+  }
+
+  /**
+   * Reset saved shell preferences while preserving endpoint/query workspace data.
+   */
+  function resetUiPreferences() {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(UI_PREFERENCES_STORAGE_KEY);
+    activeTab = DEFAULT_UI_PREFERENCES.activeTab;
+    showSchema = DEFAULT_UI_PREFERENCES.showSchema;
+    darkMode = DEFAULT_UI_PREFERENCES.darkMode;
+    showCommandPalette = false;
+    graphqlStore.logUiEvent('INFO', 'Reset UI preferences to defaults');
   }
 
   function handleEndpointChange(event) {
@@ -59,17 +92,19 @@
   function saveEndpointProfile() {
     const normalizedEndpoint = endpoint.trim();
     if (!normalizedEndpoint) return;
-    const existingIndex = endpointProfiles.findIndex((profile) => profile.endpoint === normalizedEndpoint);
-    const profileName = `Endpoint ${existingIndex >= 0 ? existingIndex + 1 : endpointProfiles.length + 1}`;
+    const existingProfile = endpointProfiles.find((profile) => profile.endpoint === normalizedEndpoint);
+    const nextIndex = endpointProfiles.length + 1;
+    const profileName = existingProfile?.name ?? `Endpoint ${nextIndex}`;
+    // Keep stable identifiers for existing profiles to avoid stale select references.
     const nextProfile = {
-      id: crypto.randomUUID(),
+      id: existingProfile?.id ?? crypto.randomUUID(),
       name: profileName,
       endpoint: normalizedEndpoint,
       headers,
       savedAt: new Date().toISOString(),
     };
-    const nextProfiles = existingIndex >= 0
-      ? endpointProfiles.map((profile, index) => (index === existingIndex ? nextProfile : profile))
+    const nextProfiles = existingProfile
+      ? endpointProfiles.map((profile) => (profile.id === existingProfile.id ? nextProfile : profile))
       : [nextProfile, ...endpointProfiles].slice(0, 10);
     endpointProfiles = nextProfiles;
     localStorage.setItem(ENDPOINT_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
@@ -110,6 +145,12 @@
   }
 
   onMount(() => {
+    const savedUiPreferences = localStorage.getItem(UI_PREFERENCES_STORAGE_KEY);
+    const parsedUiPreferences = parseUiPreferences(savedUiPreferences, tabs);
+    activeTab = parsedUiPreferences.activeTab;
+    showSchema = parsedUiPreferences.showSchema;
+    darkMode = parsedUiPreferences.darkMode;
+
     const savedProfiles = localStorage.getItem(ENDPOINT_PROFILES_STORAGE_KEY);
     if (savedProfiles) {
       try {
@@ -127,6 +168,12 @@
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
         event.preventDefault();
         showCommandPalette = !showCommandPalette;
+        return;
+      }
+
+      if (event.key === 'Escape' && showCommandPalette) {
+        event.preventDefault();
+        showCommandPalette = false;
       }
     };
 
@@ -137,6 +184,10 @@
       window.removeEventListener('graphql-command-palette:toggle', handleTogglePalette);
       window.removeEventListener('keydown', handleKeyboardShortcut);
     };
+  });
+
+  $effect(() => {
+    persistUiPreferences();
   });
 </script>
 
@@ -216,6 +267,12 @@
           >
             {showSchema ? 'Hide' : 'Show'} Schema
           </button>
+          <button
+            onclick={resetUiPreferences}
+            class="px-3 py-1 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors duration-200"
+          >
+            Reset UI
+          </button>
           <ExampleQueries />
         </div>
       </div>
@@ -285,11 +342,19 @@
       <!-- Tab Navigation -->
       <!-- Responsive tab navigation with horizontal scroll on mobile -->
       <nav class="border-b px-4 sm:px-6 transition-colors duration-200 {darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}">
-        <div class="flex space-x-4 sm:space-x-8 overflow-x-auto scrollbar-hide">
+        <div
+          role="tablist"
+          aria-label="Application views"
+          class="flex space-x-4 sm:space-x-8 overflow-x-auto scrollbar-hide"
+        >
           {#each tabs as tab}
             <button
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`panel-${tab.id}`}
+              id={`tab-${tab.id}`}
               onclick={() => switchTab(tab.id)}
-              class="py-3 sm:py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors duration-200
+              class="py-3 sm:py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
                      {activeTab === tab.id 
                        ? 'border-blue-500 text-blue-600' 
                        : darkMode 
@@ -304,7 +369,12 @@
 
       <!-- Tab Content -->
       <!-- Responsive padding and overflow handling -->
-      <div class="flex-1 p-4 sm:p-6 overflow-auto transition-colors duration-200 {darkMode ? 'bg-gray-900' : 'bg-gray-50'}">
+      <div
+        id={`panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${activeTab}`}
+        class="flex-1 p-4 sm:p-6 overflow-auto transition-colors duration-200 {darkMode ? 'bg-gray-900' : 'bg-gray-50'}"
+      >
         {#if activeTab === 'editor'}
           <QueryEditor {darkMode} />
         {:else if activeTab === 'visual'}
@@ -322,9 +392,15 @@
 </div>
 
 {#if showCommandPalette}
-  <div class="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 p-4 pt-20">
+  <div class="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-20">
+    <button
+      type="button"
+      class="absolute inset-0 bg-black/40"
+      aria-label="Close command palette"
+      onclick={() => (showCommandPalette = false)}
+    ></button>
     <div
-      class="w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl"
+      class="relative w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl"
       role="dialog"
       aria-modal="true"
     >

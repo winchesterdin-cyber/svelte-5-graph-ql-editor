@@ -5,6 +5,7 @@
   let presetName = $state('');
   let savedPresets = $state([]);
   let hasLoaded = $state(false);
+  let importStatus = $state('');
 
   $effect(() => {
     const unsubscribe = graphqlStore.subscribe((state) => {
@@ -32,6 +33,19 @@
   function deletePreset(preset) {
     graphqlStore.deletePreset(preset.id);
   }
+
+  async function exportPresets() {
+    const payload = graphqlStore.exportPresets();
+    await navigator.clipboard.writeText(payload);
+    importStatus = 'Copied workspace export JSON to clipboard.';
+  }
+
+  function importPresets() {
+    const raw = window.prompt('Paste workspace export JSON');
+    if (!raw) return;
+    graphqlStore.importPresetsFromJson(raw);
+    importStatus = 'Workspace import processed. Check activity log for details.';
+  }
 </script>
 
 <section class="mt-6 bg-white border border-gray-200 rounded p-4">
@@ -57,8 +71,24 @@
       >
         Save
       </button>
+      <button
+        onclick={exportPresets}
+        class="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
+      >
+        Export
+      </button>
+      <button
+        onclick={importPresets}
+        class="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
+      >
+        Import
+      </button>
     </div>
   </div>
+
+  {#if importStatus}
+    <p class="mt-2 text-xs text-emerald-700">{importStatus}</p>
+  {/if}
 
   <div class="mt-4">
     {#if savedPresets.length === 0}

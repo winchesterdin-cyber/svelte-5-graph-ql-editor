@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { graphqlStore } from '../stores/graphql-store.js';
   import { LEVELS } from '../stores/logger.js';
   import {
@@ -27,11 +28,39 @@
   let stickyFirstColumn = $state(false);
   let csvDelimiter = $state(',');
   let selectedHistoryIds = $state([]);
+  let historyMaxEntries = $state(50);
+  let historyMaxAgeDays = $state(30);
+
+  const RESULTS_VIEW_PREFS_KEY = 'graphql-editor-results-view-preferences';
 
   // Subscribe to store changes
   graphqlStore.subscribe(state => {
     storeState = state;
     tableData = renderTableView(state.results);
+  });
+
+
+  onMount(() => {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(RESULTS_VIEW_PREFS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      viewMode = parsed.viewMode ?? viewMode;
+      stickyFirstColumn = Boolean(parsed.stickyFirstColumn);
+      csvDelimiter = parsed.csvDelimiter ?? csvDelimiter;
+      tableFilter = parsed.tableFilter ?? tableFilter;
+    } catch {
+      localStorage.removeItem(RESULTS_VIEW_PREFS_KEY);
+    }
+  });
+
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(
+      RESULTS_VIEW_PREFS_KEY,
+      JSON.stringify({ viewMode, stickyFirstColumn, csvDelimiter, tableFilter }),
+    );
   });
 
   const tableColumnOrder = $derived(() => buildColumnOrder(tableData ?? []));
@@ -159,6 +188,14 @@
     if (maxAttempts <= 1) return 'Executing query...';
     return `Executing query (attempt ${retryAttempt + 1} of ${maxAttempts})...`;
   });
+
+
+  function applyHistoryRetentionPolicy() {
+    graphqlStore.setHistoryPolicy({
+      maxEntries: Number(historyMaxEntries),
+      maxAgeDays: Number(historyMaxAgeDays),
+    });
+  }
 
   async function copyResults() {
     if (!storeState.results) {
@@ -730,6 +767,14 @@
   </div>
 
   {#if storeState.history?.length}
+    <div class="mb-3 flex flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs">
+      <span class="font-semibold text-gray-700">Retention</span>
+      <label for="history-max-entries" class="text-gray-600">Max entries</label>
+      <input id="history-max-entries" type="number" min="1" value={historyMaxEntries} oninput={(event) => (historyMaxEntries = event.target.value)} class="w-16 rounded border border-gray-200 px-1 py-0.5" />
+      <label for="history-max-age" class="text-gray-600">Max age days</label>
+      <input id="history-max-age" type="number" min="0" value={historyMaxAgeDays} oninput={(event) => (historyMaxAgeDays = event.target.value)} class="w-16 rounded border border-gray-200 px-1 py-0.5" />
+      <button onclick={applyHistoryRetentionPolicy} class="rounded bg-gray-800 px-2 py-1 text-white hover:bg-gray-900">Apply</button>
+    </div>
     <div class="mt-4 border border-gray-200 rounded">
       <div class="flex items-center justify-between px-4 py-2 bg-gray-50">
         <h3 class="text-sm font-semibold text-gray-800">Recent Queries</h3>
@@ -953,8 +998,12 @@
             <li>Status changed: {historyDiff.statusChanged ? 'Yes' : 'No'}</li>
             <li>Result changed: {historyDiff.resultChanged ? 'Yes' : 'No'}</li>
             <li>Result line delta: {historyDiff.resultLineDelta}</li>
+            <li>Changed JSON paths: {historyDiff.changedPathCount}</li>
           </ul>
           <p class="mt-2 font-medium text-slate-800">Total changed dimensions: {historyDiff.changeCount}</p>
+          {#if historyDiff.sampleChangedPaths?.length}
+            <p class="mt-2 text-slate-700">Sample paths: {historyDiff.sampleChangedPaths.join(', ')}</p>
+          {/if}
         </div>
       {/if}
     </div>
@@ -980,6 +1029,12 @@
             class="text-xs text-gray-600 hover:text-gray-900"
           >
             Clear
+          </button>
+          <button
+            onclick={clearLogs}
+            class="text-xs rounded border border-gray-200 px-2 py-1 text-gray-600 hover:bg-gray-100"
+          >
+            Quick clear logs
           </button>
         </div>
       </div>
