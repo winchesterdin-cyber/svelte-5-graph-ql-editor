@@ -5,10 +5,10 @@
   import { LEVELS } from '../stores/logger.js';
   import {
     getDiagnostics,
+    getDocumentMetrics,
     getOperationOutline,
     getSchemaSuggestions
   } from './editor-intelligence.js';
-
   let query = $state('');
   let endpoint = $state('');
   let variables = $state('');
@@ -24,7 +24,7 @@
   let showSuggestions = $state(false);
   let selectedSuggestionIndex = $state(0);
   let requestTemplates = $state([]);
-
+  let diagnosticsFilter = $state('all');
   // Subscribe to store changes
   $effect(() => {
     const unsubscribe = graphqlStore.subscribe((state) => {
@@ -41,11 +41,26 @@
     });
     return unsubscribe;
   });
-
   const operationOutline = $derived(() => getOperationOutline(query));
   const diagnostics = $derived(() => getDiagnostics({ query, endpoint, variables, headers }));
+  const diagnosticErrorCount = $derived(() =>
+    Array.isArray(diagnostics)
+      ? diagnostics.filter((item) => item.level === 'error').length
+      : 0
+  );
+  const diagnosticWarningCount = $derived(() =>
+    Array.isArray(diagnostics)
+      ? diagnostics.filter((item) => item.level !== 'error').length
+      : 0
+  );
+  const filteredDiagnostics = $derived(() => {
+    if (!Array.isArray(diagnostics)) return [];
+    if (diagnosticsFilter === 'errors') return diagnostics.filter((item) => item.level === 'error');
+    if (diagnosticsFilter === 'warnings') return diagnostics.filter((item) => item.level !== 'error');
+    return diagnostics;
+  });
   const suggestions = $derived(() => getSchemaSuggestions({ schema, query, cursorIndex }));
-
+  const documentMetrics = $derived(() => getDocumentMetrics(query));
   const draftToRestore = $derived(() => {
     if (!draft) return null;
     const hasChanges =
@@ -54,12 +69,10 @@
       draft.variables !== variables;
     return hasChanges ? draft : null;
   });
-
   onMount(() => {
     graphqlStore.loadDraft();
     requestTemplates = graphqlStore.getRequestTemplates();
   });
-
   function handleQueryChange(event) {
     const newQuery = event.target.value;
     query = newQuery;
@@ -67,7 +80,6 @@
     graphqlStore.updateQuery(newQuery);
     showSuggestions = false;
   }
-
   function goToOperation(operation) {
     if (!operation) return;
     const editorEl = document.getElementById('graphql-query-input');
@@ -80,11 +92,9 @@
       index: operation.index,
     });
   }
-
   async function executeQuery() {
     await graphqlStore.executeQuery();
   }
-
   /**
    * Apply a reusable request starter to reduce repetitive setup work.
    */
@@ -93,11 +103,9 @@
     if (!templateId) return;
     graphqlStore.applyRequestTemplate(templateId);
   }
-
   function cancelQuery() {
     graphqlStore.cancelActiveRequest();
   }
-
   function formatQuery() {
     // Simple formatting - add proper indentation
     const formatted = query
@@ -109,16 +117,28 @@
     graphqlStore.updateQuery(formatted);
     graphqlStore.logUiEvent(LEVELS.INFO, 'Formatted query document');
   }
-
+  /**
+   * Reduce query whitespace while preserving semantics for quick payload inspection.
+   */
+  function minifyQuery() {
+    const minified = query
+      .replace(/#[^\n]*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*([{}():,])\s*/g, '$1')
+      .trim();
+    graphqlStore.updateQuery(minified);
+    graphqlStore.logUiEvent(LEVELS.INFO, 'Minified query document', {
+      beforeLength: query.length,
+      afterLength: minified.length
+    });
+  }
   function resetQuery() {
     graphqlStore.resetDefaults();
     graphqlStore.logUiEvent(LEVELS.INFO, 'Reset query editor to defaults');
   }
-
   function handleEditorSelect(event) {
     cursorIndex = event.target.selectionStart ?? 0;
   }
-
   function applySuggestion(suggestion) {
     if (!suggestion) return;
     const editorEl = document.getElementById('graphql-query-input');
@@ -140,20 +160,17 @@
       editorEl.setSelectionRange(cursorIndex, cursorIndex);
     });
   }
-
   function moveSuggestionSelection(direction = 1) {
     if (!suggestions.length) return;
     selectedSuggestionIndex =
       (selectedSuggestionIndex + direction + suggestions.length) % suggestions.length;
   }
-
   function handleKeydown(event) {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
       executeQuery();
       return;
     }
-
     if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
       event.preventDefault();
       showSuggestions = true;
@@ -161,15 +178,22 @@
       graphqlStore.logUiEvent(LEVELS.INFO, 'Opened schema autocomplete menu');
       return;
     }
-
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      formatQuery();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'm') {
+      event.preventDefault();
+      minifyQuery();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
       event.preventDefault();
       window.dispatchEvent(new CustomEvent('graphql-command-palette:toggle'));
       return;
     }
-
     if (!showSuggestions) return;
-
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       moveSuggestionSelection(1);
@@ -184,41 +208,79 @@
       showSuggestions = false;
     }
   }
-
   function handleTimeoutChange(event) {
     const rawValue = event.target.value;
     const parsed = rawValue === '' ? 0 : Number(rawValue);
     if (Number.isNaN(parsed) || parsed < 0) return;
     graphqlStore.setRequestTimeoutMs(parsed);
   }
-
   function handleRetryChange(event) {
     const rawValue = event.target.value;
     const parsed = rawValue === '' ? 0 : Number(rawValue);
     if (Number.isNaN(parsed) || parsed < 0) return;
     graphqlStore.setRetryPolicy({ maxRetries: parsed, retryDelayMs });
   }
-
   function handleRetryDelayChange(event) {
     const rawValue = event.target.value;
     const parsed = rawValue === '' ? 0 : Number(rawValue);
     if (Number.isNaN(parsed) || parsed < 0) return;
     graphqlStore.setRetryPolicy({ maxRetries: retryMax, retryDelayMs: parsed });
   }
-
   function restoreDraft() {
     graphqlStore.applyDraft();
   }
-
   function dismissDraft() {
     graphqlStore.clearDraft();
   }
-
   function formatDraftTime(timestamp) {
     if (!timestamp) return 'unknown time';
     return new Date(timestamp).toLocaleString();
   }
-
+  function getComplexityBadgeClass() {
+    if (documentMetrics.complexityLabel === 'high') {
+      return 'bg-red-100 text-red-700 border-red-200';
+    }
+    if (documentMetrics.complexityLabel === 'medium') {
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    }
+    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  }
+  /**
+   * Export diagnostics as a markdown report for bug tickets and peer reviews.
+   */
+  async function copyDiagnosticsReport() {
+    const reportLines = [
+      '# GraphQL Editor Diagnostics Report',
+      '',
+      `- Endpoint: ${endpoint || '(not set)'}`,
+      `- Generated at: ${new Date().toISOString()}`,
+      `- Query length: ${query.length}`,
+      `- Complexity: ${documentMetrics.complexityLabel} (${documentMetrics.complexityScore})`,
+      '',
+      '## Diagnostics',
+    ];
+    if (!diagnostics.length) {
+      reportLines.push('- No diagnostics detected.');
+    } else {
+      diagnostics.forEach((diagnostic) => {
+        reportLines.push(
+          `- [${diagnostic.level.toUpperCase()}] ${diagnostic.code}: ${diagnostic.message}`,
+        );
+      });
+    }
+    try {
+      await navigator.clipboard?.writeText(reportLines.join('\n'));
+      copyStatus = 'Diagnostics report copied to clipboard.';
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied diagnostics report', {
+        count: diagnostics.length,
+      });
+    } catch (error) {
+      copyStatus = 'Clipboard copy failed. Try again or copy manually.';
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Clipboard copy failed for diagnostics report', {
+        error: error.message,
+      });
+    }
+  }
   /**
    * Build a curl command to reproduce the current query execution.
    * This helps users debug outside the UI or share a request quickly.
@@ -234,12 +296,10 @@
     if (headerError) {
       throw new Error(headerError);
     }
-
     const payload = JSON.stringify({
       query,
       variables: parsedVariables ?? undefined
     });
-
     const headerFlags = Object.entries({
       'Content-Type': 'application/json',
       ...(parsedHeaders ?? {})
@@ -247,7 +307,6 @@
       '-H',
       `'${`${key}: ${value}`.replace(/'/g, "'\\''")}'`
     ]);
-
     return [
       "curl",
       "-X",
@@ -258,7 +317,6 @@
       `'${payload.replace(/'/g, "'\\''")}'`
     ].join(' ');
   }
-
   async function copyCurlCommand() {
     copyStatus = '';
     if (!endpoint) {
@@ -266,7 +324,6 @@
       graphqlStore.logUiEvent(LEVELS.WARN, 'Missing endpoint for cURL copy');
       return;
     }
-
     let command;
     try {
       command = buildCurlCommand();
@@ -277,13 +334,11 @@
       });
       return;
     }
-
     if (!command) {
       copyStatus = 'Unable to generate cURL command.';
       graphqlStore.logUiEvent(LEVELS.ERROR, 'Failed to generate cURL command');
       return;
     }
-
     try {
       await navigator.clipboard?.writeText(command);
       copyStatus = 'cURL command copied to clipboard.';
@@ -295,7 +350,60 @@
       });
     }
   }
-
+  /**
+   * Build a fetch() snippet for debugging in browser consoles or JS runtimes.
+   */
+  function buildFetchSnippet() {
+    if (!endpoint) return null;
+    let parsedVariables = null;
+    if (variables?.trim()) {
+      parsedVariables = JSON.parse(variables);
+    }
+    const { headers: parsedHeaders, error: headerError } = graphqlStore.parseHeadersJson(headers);
+    if (headerError) {
+      throw new Error(headerError);
+    }
+    const payload = {
+      query,
+      ...(parsedVariables ? { variables: parsedVariables } : {})
+    };
+    return `fetch('${endpoint}', {\n  method: 'POST',\n  headers: ${JSON.stringify(
+      {
+        'Content-Type': 'application/json',
+        ...(parsedHeaders ?? {})
+      },
+      null,
+      2
+    )},\n  body: JSON.stringify(${JSON.stringify(payload, null, 2)})\n})\n  .then((response) => response.json())\n  .then((data) => console.log(data));`;
+  }
+  async function copyFetchSnippet() {
+    copyStatus = '';
+    if (!endpoint) {
+      copyStatus = 'Set an endpoint to generate a fetch snippet.';
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Missing endpoint for fetch snippet copy');
+      return;
+    }
+    let snippet;
+    try {
+      snippet = buildFetchSnippet();
+    } catch (error) {
+      copyStatus = `${error.message}`;
+      graphqlStore.logUiEvent(LEVELS.WARN, 'Invalid JSON for fetch snippet copy', {
+        error: error.message
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard?.writeText(snippet);
+      copyStatus = 'fetch() snippet copied to clipboard.';
+      graphqlStore.logUiEvent(LEVELS.INFO, 'Copied fetch snippet');
+    } catch (error) {
+      copyStatus = 'Clipboard copy failed. Try again or copy manually.';
+      graphqlStore.logUiEvent(LEVELS.ERROR, 'Clipboard copy failed for fetch snippet', {
+        error: error.message
+      });
+    }
+  }
   // Surface retry behavior so users understand slow/unstable network handling.
   const retrySummary = $derived(() => {
     if (!isExecuting) return null;
@@ -304,7 +412,6 @@
     return `Attempting request (up to ${totalAttempts} tries).`;
   });
 </script>
-
 <div class="h-full flex flex-col">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-gray-900">GraphQL Query Editor</h2>
@@ -348,10 +455,28 @@
         Format
       </button>
       <button
+        onclick={minifyQuery}
+        class="px-3 py-1 bg-slate-500 text-white rounded text-sm hover:bg-slate-600"
+      >
+        Minify
+      </button>
+      <button
         onclick={copyCurlCommand}
         class="px-3 py-1 bg-purple-500 text-white rounded text-sm hover:bg-purple-600"
       >
         Copy cURL
+      </button>
+      <button
+        onclick={copyFetchSnippet}
+        class="px-3 py-1 bg-fuchsia-500 text-white rounded text-sm hover:bg-fuchsia-600"
+      >
+        Copy fetch()
+      </button>
+      <button
+        onclick={copyDiagnosticsReport}
+        class="px-3 py-1 bg-cyan-600 text-white rounded text-sm hover:bg-cyan-700"
+      >
+        Copy diagnostics
       </button>
       <button
         onclick={resetQuery}
@@ -376,7 +501,6 @@
       {/if}
     </div>
   </div>
-
   <div class="mb-3 flex items-center gap-2">
     <label for="request-template" class="text-xs font-medium text-gray-600">Templates</label>
     <select id="request-template" onchange={applyRequestTemplate} class="rounded border border-gray-200 px-2 py-1 text-xs">
@@ -386,7 +510,6 @@
       {/each}
     </select>
   </div>
-
   {#if draftToRestore}
     <div class="mb-4 flex flex-col gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -411,7 +534,6 @@
       </div>
     </div>
   {/if}
-
   <div class="flex-1 border border-gray-300 rounded">
     <textarea
       id="graphql-query-input"
@@ -425,7 +547,6 @@
       class="w-full h-full p-4 font-mono text-sm resize-none border-none outline-none"
     ></textarea>
   </div>
-
   {#if showSuggestions && suggestions.length}
     <div class="mt-3 rounded border border-indigo-200 bg-indigo-50 p-3 text-xs">
       <p class="mb-2 font-semibold text-indigo-900">Schema autocomplete</p>
@@ -445,7 +566,6 @@
       </ul>
     </div>
   {/if}
-
   <div class="mt-3 grid gap-3 lg:grid-cols-2">
     <div class="rounded border border-gray-200 bg-white p-3">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-700">Operation explorer</h3>
@@ -469,44 +589,69 @@
         <p class="mt-2 text-xs text-gray-500">No operations discovered yet.</p>
       {/if}
     </div>
-
     <div class="rounded border border-gray-200 bg-white p-3">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-700">Live diagnostics</h3>
-      {#if diagnostics.length}
+      <p class="mt-1 text-[11px] text-gray-500">
+        {diagnosticErrorCount} error(s) ·
+        {diagnosticWarningCount} warning(s)
+      </p>
+      <div class="mt-2 flex gap-2">
+        <button onclick={() => (diagnosticsFilter = 'all')} class="rounded border px-2 py-1 text-[11px] {diagnosticsFilter === 'all' ? 'bg-gray-100 border-gray-300' : 'border-gray-200'}">All</button>
+        <button onclick={() => (diagnosticsFilter = 'errors')} class="rounded border px-2 py-1 text-[11px] {diagnosticsFilter === 'errors' ? 'bg-red-50 border-red-300 text-red-700' : 'border-gray-200'}">Errors</button>
+        <button onclick={() => (diagnosticsFilter = 'warnings')} class="rounded border px-2 py-1 text-[11px] {diagnosticsFilter === 'warnings' ? 'bg-amber-50 border-amber-300 text-amber-700' : 'border-gray-200'}">Warnings</button>
+      </div>
+      {#if filteredDiagnostics.length}
         <ul class="mt-2 space-y-1 text-xs">
-          {#each diagnostics as diagnostic}
+          {#each filteredDiagnostics as diagnostic}
             <li class="rounded px-2 py-1 {diagnostic.level === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}">
               <span class="font-semibold">{diagnostic.code}:</span> {diagnostic.message}
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mt-2 text-xs text-emerald-700">No diagnostics detected.</p>
+        <p class="mt-2 text-xs text-emerald-700">No diagnostics in this filter.</p>
       {/if}
     </div>
   </div>
-
+  <div class="mt-3 rounded border border-gray-200 bg-white p-3">
+    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-700">Document metrics</h3>
+    <div class="mt-2 grid gap-2 text-xs text-gray-700 sm:grid-cols-3">
+      <p><span class="font-semibold">Chars:</span> {documentMetrics.characterCount}</p>
+      <p><span class="font-semibold">Lines:</span> {documentMetrics.lineCount}</p>
+      <p><span class="font-semibold">Ops:</span> {documentMetrics.operationCount}</p>
+      <p><span class="font-semibold">Fragments:</span> {documentMetrics.fragmentCount}</p>
+      <p><span class="font-semibold">Top-level fields:</span> {documentMetrics.topLevelFieldCount}</p>
+      <p><span class="font-semibold">Max nesting depth:</span> {documentMetrics.maxSelectionDepth}</p>
+      <p><span class="font-semibold">Complexity score:</span> {documentMetrics.complexityScore}</p>
+      <p>
+        <span class="font-semibold">Complexity:</span>
+        <span class="ml-1 inline-flex rounded border px-2 py-0.5 text-[11px] uppercase {getComplexityBadgeClass()}">
+          {documentMetrics.complexityLabel}
+        </span>
+      </p>
+    </div>
+  </div>
   <SavedPresets />
-
   {#if retrySummary}
     <div class="mt-3 text-xs text-gray-500">
       {retrySummary}
     </div>
   {/if}
-
   {#if copyStatus}
     <div class="mt-2 text-xs text-gray-500">
       {copyStatus}
     </div>
   {/if}
-
   <div class="mt-4 text-sm text-gray-600">
     <p>💡 <strong>Tips:</strong></p>
     <ul class="list-disc list-inside space-y-1 mt-2">
       <li>Use Ctrl+Space for autocomplete (when schema is loaded)</li>
       <li>Use Ctrl/Cmd+Enter to execute the query quickly</li>
       <li>Use Ctrl/Cmd+Shift+P to open the global command palette</li>
-      <li>Click "Format" to auto-indent your query</li>
+      <li>Click "Format" or use Ctrl/Cmd+Shift+F to auto-indent your query</li>
+      <li>Use "Minify" or Ctrl/Cmd+Shift+M to quickly compress query whitespace</li>
+      <li>Use "Copy diagnostics" to share a markdown bug report</li>
+      <li>Use "Copy fetch()" to share browser-friendly request snippets</li>
       <li>Switch to "Visual Builder" tab to build queries visually</li>
       <li>Check the "Variables" tab to define query variables</li>
       <li>Set timeout to 0 to disable request timeouts</li>

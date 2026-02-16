@@ -28,6 +28,13 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **UI Preference Persistence** for active tab, schema visibility, and theme mode between sessions.
 - **Reset UI Preferences** control to quickly return shell state to defaults.
 - **Expanded Diagnostics** for malformed endpoint URLs and invalid headers JSON.
+- **Advanced Diagnostics** for duplicate operations/fragments, unknown fragment spreads, variable usage mismatches, duplicate variable definitions, and insecure endpoint protocol checks.
+- **Document Metrics** panel to track operations, fragments, depth, and query size while authoring.
+- **Diagnostics Filters** to focus quickly on errors vs warnings.
+- **Diagnostics Markdown Export** for sharing bug reports and review context.
+- **Complexity Badging** with low/medium/high labels and score.
+- **Copy fetch()** to generate browser-friendly JavaScript request snippets.
+- **Minify Query** action to compact whitespace before sharing payloads (also `Ctrl/Cmd+Shift+M`).
 - **Request Templates** to quickly start common auth and pagination request patterns.
 - **Saved Workspace Import/Export** for sharing reusable endpoint/query setups with metadata.
 - **History Retention Controls** to cap stored entries by count and age.
@@ -84,6 +91,8 @@ npm test         # run Node-based unit tests
 - History exports include metadata (version + timestamp) and can be re-imported from JSON payloads.
 - Use the timeout control in the Query Editor to cancel long-running requests (set to `0` to disable timeouts).
 - Use "Copy cURL" to share or debug the current request outside the UI.
+- Use "Copy fetch()" to generate a browser-console-ready request script.
+- Use "Minify" when you need compact query payloads for logs or snippets.
 - Configure retry count + delay in the Query Editor to automatically retry on transient network or 5xx/429 errors.
 - Use the Activity Log in the Results tab to inspect request events and debugging context.
 - Add request headers (Authorization, API keys) in the Headers tab to reuse them on every request.
@@ -109,7 +118,7 @@ You can preview the production build with `npm run preview`.
 The first enhancement batch now includes:
 
 - Query editor intelligence helpers (operation outline, live diagnostics, lightweight schema suggestions).
-- Keyboard shortcuts: `Ctrl/Cmd+Enter` (execute), `Ctrl/Cmd+Space` (autocomplete), `Ctrl/Cmd+Shift+P` (command palette).
+- Keyboard shortcuts: `Ctrl/Cmd+Enter` (execute), `Ctrl/Cmd+Space` (autocomplete), `Ctrl/Cmd+Shift+P` (command palette), `Ctrl/Cmd+Shift+F` (format query).
 - Command palette quick actions for tab navigation, schema toggle, theme toggle, and endpoint profile save.
 - Endpoint manager profiles with local persistence and remove controls.
 - Variables editor schema hints derived from operation variable signatures.
