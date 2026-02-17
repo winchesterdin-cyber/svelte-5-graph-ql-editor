@@ -60,3 +60,12 @@
 - Added warning when a document contains more than five operations, helping teams keep requests reviewable.
 
 - Refined variable diagnostics to avoid false-positive missing-required errors when a document contains multiple operations; now emits an informational guidance diagnostic instead.
+
+## 2026-02-17 — Diagnostics hardening batch (20-item execution)
+
+- Added endpoint quality diagnostics: credentials in URL, query params, hash fragments, and non-graphql path hints.
+- Added header recommendation diagnostics: missing Accept / Content-Type, auth scheme checks, duplicate case-insensitive keys, and whitespace checks.
+- Added runtime variable-type diagnostics: null for non-null, scalar mismatch, list mismatch, and object mismatch checks.
+- Added fragment cycle detection and operation empty-selection detection.
+- Fixed variable definition parsing for list signatures (for example `[ID!]!`).
+- Added targeted unit tests for every new diagnostics family and parser fix.

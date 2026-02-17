@@ -137,8 +137,10 @@ export function getDiagnostics({
   );
   diagnostics.push(...getOperationNameDiagnostics(operations));
   diagnostics.push(...getFragmentDiagnostics(source));
+  diagnostics.push(...getFragmentCycleDiagnostics(source));
   diagnostics.push(...getVariableDiagnostics(source));
   diagnostics.push(...getAnonymousOperationDiagnostics(source));
+  diagnostics.push(...getOperationSelectionDiagnostics(operations));
   diagnostics.push(...getOperationVolumeDiagnostics(operations));
 
   if (source.trim() && operations.length === 0) {
@@ -166,6 +168,7 @@ export function getDiagnostics({
     try {
       // Validate URL format early to prevent avoidable request failures.
       const parsedUrl = new URL(normalizedEndpoint);
+      diagnostics.push(...getEndpointQualityDiagnostics(parsedUrl));
       if (parsedUrl.protocol === "http:") {
         diagnostics.push({
           level: "warn",
@@ -200,6 +203,7 @@ export function getDiagnostics({
         });
       } else {
         diagnostics.push(...getHeaderEntryDiagnostics(parsedHeaders));
+        diagnostics.push(...getHeaderRecommendationDiagnostics(parsedHeaders));
       }
     } catch (error) {
       diagnostics.push({
@@ -224,6 +228,7 @@ export function getDiagnostics({
         diagnostics.push(
           ...getVariableInputDiagnostics(source, parsed, operations),
         );
+        diagnostics.push(...getVariableTypeDiagnostics(source, parsed));
       }
     } catch (error) {
       diagnostics.push({
@@ -362,7 +367,7 @@ export function getVariableDefinitions(query = "") {
   const variableSections = source.match(/\(([^)]*\$[^)]*)\)/g) ?? [];
   variableSections.forEach((section) => {
     const matches = section.matchAll(
-      /\$([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_\[\]!]*)/g,
+      /\$([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\[\]A-Za-z_][A-Za-z0-9_\[\]!]*)/g,
     );
     for (const match of matches) {
       definitions[match[1]] = match[2];
@@ -518,6 +523,70 @@ function getAnonymousOperationDiagnostics(source) {
   ];
 }
 
+function getOperationSelectionDiagnostics(operations) {
+  return operations
+    .filter((operation) => !operation.fields?.length)
+    .map((operation) => ({
+      level: "error",
+      code: "EMPTY_OPERATION_SELECTION",
+      message: `Operation "${operation.name}" does not contain top-level fields in its selection set.`,
+    }));
+}
+
+// Detect cycles in fragment spread graph to prevent recursive fragment mistakes.
+function getFragmentCycleDiagnostics(source) {
+  const diagnostics = [];
+  const fragments = [
+    ...String(source).matchAll(
+      /fragment\s+([A-Za-z_][A-Za-z0-9_]*)\s+on\s+[A-Za-z_][A-Za-z0-9_]*\s*\{([\s\S]*?)\}/g,
+    ),
+  ];
+
+  const graph = new Map();
+  fragments.forEach((match) => {
+    const [, name, body] = match;
+    const dependencies = [
+      ...body.matchAll(/\.\.\.\s*([A-Za-z_][A-Za-z0-9_]*)/g),
+    ].map((spread) => spread[1]);
+    graph.set(name, dependencies);
+  });
+
+  const visiting = new Set();
+  const visited = new Set();
+  const reported = new Set();
+
+  const visit = (node, trail = []) => {
+    if (visiting.has(node)) {
+      const cycleStartIndex = trail.indexOf(node);
+      const cyclePath = [...trail.slice(cycleStartIndex), node];
+      const cycleKey = cyclePath.join(" -> ");
+      if (!reported.has(cycleKey)) {
+        reported.add(cycleKey);
+        diagnostics.push({
+          level: "error",
+          code: "CYCLIC_FRAGMENT_SPREAD",
+          message: `Fragment cycle detected: ${cyclePath.join(" -> ")}.`,
+        });
+      }
+      return;
+    }
+
+    if (visited.has(node)) return;
+    visiting.add(node);
+    const dependencies = graph.get(node) ?? [];
+    dependencies.forEach((dependency) => {
+      if (graph.has(dependency)) {
+        visit(dependency, [...trail, node]);
+      }
+    });
+    visiting.delete(node);
+    visited.add(node);
+  };
+
+  [...graph.keys()].forEach((name) => visit(name));
+  return diagnostics;
+}
+
 function getOperationVolumeDiagnostics(operations) {
   // Large multi-operation documents are hard to debug and often hide stale operations.
   if (operations.length <= 5) return [];
@@ -550,6 +619,133 @@ function getHeaderEntryDiagnostics(parsedHeaders) {
         level: "warn",
         code: "NON_STRING_HEADER_VALUE",
         message: `Header \"${rawKey}\" should be a string value for predictable request serialization.`,
+      });
+    }
+  });
+
+  return diagnostics;
+}
+
+// Endpoint diagnostics beyond strict URL validity to catch risky-but-valid configurations.
+function getEndpointQualityDiagnostics(parsedUrl) {
+  const diagnostics = [];
+
+  if (parsedUrl.username || parsedUrl.password) {
+    diagnostics.push({
+      level: "warn",
+      code: "ENDPOINT_CREDENTIALS_IN_URL",
+      message:
+        "Avoid embedding credentials in endpoint URLs. Use headers (for example Authorization) instead.",
+    });
+  }
+
+  if (parsedUrl.search) {
+    diagnostics.push({
+      level: "info",
+      code: "ENDPOINT_QUERY_PARAMS",
+      message:
+        "Endpoint URL includes query parameters. Ensure this is intentional for your GraphQL gateway setup.",
+    });
+  }
+
+  if (parsedUrl.hash) {
+    diagnostics.push({
+      level: "warn",
+      code: "ENDPOINT_HASH_FRAGMENT",
+      message:
+        "Endpoint URL includes a hash fragment. Fragments are ignored by HTTP requests and are usually unintended.",
+    });
+  }
+
+  if (!parsedUrl.pathname.toLowerCase().includes("graphql")) {
+    diagnostics.push({
+      level: "info",
+      code: "ENDPOINT_NON_GRAPHQL_PATH",
+      message:
+        'Endpoint path does not include "graphql". Verify this URL points to your GraphQL handler.',
+    });
+  }
+
+  return diagnostics;
+}
+
+// Header diagnostics focus on interoperability and auth correctness, not only JSON validity.
+function getHeaderRecommendationDiagnostics(parsedHeaders) {
+  const diagnostics = [];
+  const headerEntries = Object.entries(parsedHeaders).map(([key, value]) => ({
+    rawKey: key,
+    normalizedKey: String(key).trim().toLowerCase(),
+    value,
+  }));
+
+  const duplicateHeaderMap = new Map();
+  headerEntries.forEach((entry) => {
+    duplicateHeaderMap.set(
+      entry.normalizedKey,
+      (duplicateHeaderMap.get(entry.normalizedKey) ?? 0) + 1,
+    );
+  });
+
+  duplicateHeaderMap.forEach((count, headerName) => {
+    if (!headerName || count <= 1) return;
+    diagnostics.push({
+      level: "warn",
+      code: "DUPLICATE_HEADER_CASE_INSENSITIVE",
+      message: `Header "${headerName}" appears ${count} times when compared case-insensitively. Keep a single key to avoid ambiguity.`,
+    });
+  });
+
+  const hasAcceptHeader = headerEntries.some(
+    (entry) => entry.normalizedKey === "accept",
+  );
+  const hasContentTypeHeader = headerEntries.some(
+    (entry) => entry.normalizedKey === "content-type",
+  );
+  const authorizationHeader = headerEntries.find(
+    (entry) => entry.normalizedKey === "authorization",
+  );
+
+  if (!hasAcceptHeader) {
+    diagnostics.push({
+      level: "info",
+      code: "MISSING_ACCEPT_HEADER",
+      message:
+        "Consider adding an Accept header (application/json) for predictable response content negotiation.",
+    });
+  }
+
+  if (!hasContentTypeHeader) {
+    diagnostics.push({
+      level: "info",
+      code: "MISSING_CONTENT_TYPE_HEADER",
+      message:
+        "Consider adding a Content-Type header (application/json) for explicit request serialization.",
+    });
+  }
+
+  if (
+    authorizationHeader &&
+    typeof authorizationHeader.value === "string" &&
+    authorizationHeader.value.trim() &&
+    !/^(Bearer|Basic|Digest|ApiKey|Token)\s+/i.test(
+      authorizationHeader.value.trim(),
+    )
+  ) {
+    diagnostics.push({
+      level: "warn",
+      code: "AUTH_HEADER_SCHEME",
+      message:
+        "Authorization header does not include a recognized auth scheme prefix (for example: Bearer <token>).",
+    });
+  }
+
+  headerEntries.forEach((entry) => {
+    if (typeof entry.value !== "string") return;
+    if (entry.value !== entry.value.trim()) {
+      diagnostics.push({
+        level: "warn",
+        code: "HEADER_VALUE_WHITESPACE",
+        message: `Header "${entry.rawKey}" contains leading or trailing whitespace, which can break authentication or cache keys.`,
       });
     }
   });
@@ -601,7 +797,7 @@ function getVariableDefinitionMetadata(source) {
 
   variableSections.forEach((section) => {
     const matches = section.matchAll(
-      /\$([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_\[\]!]*)\s*(=\s*[^,)]+)?/g,
+      /\$([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\[\]A-Za-z_][A-Za-z0-9_\[\]!]*)\s*(=\s*[^,)]+)?/g,
     );
 
     for (const match of matches) {
@@ -617,6 +813,99 @@ function getVariableDefinitionMetadata(source) {
     allVariables,
     requiredVariables,
   };
+}
+
+// Runtime variable checks provide fast feedback before making network requests.
+function getVariableTypeDiagnostics(source, parsedVariables) {
+  const diagnostics = [];
+  const definitions = getVariableDefinitions(source);
+
+  Object.entries(parsedVariables).forEach(([name, value]) => {
+    const type = definitions[name];
+    if (!type) return;
+
+    if (type.endsWith("!") && value === null) {
+      diagnostics.push({
+        level: "error",
+        code: "NULL_FOR_NON_NULL_VARIABLE",
+        message: `Variable "$${name}" is non-null (${type}) but received null.`,
+      });
+      return;
+    }
+
+    const typeDiagnostics = validateVariableValueByType(name, type, value);
+    diagnostics.push(...typeDiagnostics);
+  });
+
+  return diagnostics;
+}
+
+function validateVariableValueByType(name, type, value) {
+  const diagnostics = [];
+  const normalizedType = stripGraphqlTypeDecorators(type);
+
+  if (
+    normalizedType.startsWith("[") &&
+    !Array.isArray(value) &&
+    value !== null
+  ) {
+    diagnostics.push({
+      level: "warn",
+      code: "VARIABLE_LIST_TYPE_MISMATCH",
+      message: `Variable "$${name}" expects list type (${type}) but received ${getValueKind(value)}.`,
+    });
+    return diagnostics;
+  }
+
+  if (isLikelyInputObjectType(normalizedType)) {
+    if (value !== null && (typeof value !== "object" || Array.isArray(value))) {
+      diagnostics.push({
+        level: "warn",
+        code: "VARIABLE_OBJECT_TYPE_MISMATCH",
+        message: `Variable "$${name}" expects input object type (${type}) but received ${getValueKind(value)}.`,
+      });
+    }
+    return diagnostics;
+  }
+
+  if (value === null) return diagnostics;
+
+  const scalarValidators = {
+    Int: Number.isInteger,
+    Float: (entry) => typeof entry === "number" && Number.isFinite(entry),
+    Boolean: (entry) => typeof entry === "boolean",
+    String: (entry) => typeof entry === "string",
+    ID: (entry) => typeof entry === "string" || Number.isInteger(entry),
+  };
+
+  const validator = scalarValidators[normalizedType];
+  if (validator && !validator(value)) {
+    diagnostics.push({
+      level: "warn",
+      code: "VARIABLE_SCALAR_TYPE_MISMATCH",
+      message: `Variable "$${name}" expects ${normalizedType} but received ${getValueKind(value)}.`,
+    });
+  }
+
+  return diagnostics;
+}
+
+function stripGraphqlTypeDecorators(type) {
+  return String(type).replace(/!/g, "").trim();
+}
+
+function isLikelyInputObjectType(type) {
+  if (!type || type.startsWith("[")) return false;
+  return (
+    /^[A-Z][A-Za-z0-9_]*$/.test(type) &&
+    !["Int", "Float", "String", "Boolean", "ID"].includes(type)
+  );
+}
+
+function getValueKind(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
 }
 
 function getComplexityDiagnostics(metrics) {
