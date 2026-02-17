@@ -27,10 +27,10 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **Auto-saved Drafts** to recover in-progress editor changes after refreshes.
 - **UI Preference Persistence** for active tab, schema visibility, and theme mode between sessions.
 - **Reset UI Preferences** control to quickly return shell state to defaults.
-- **Expanded Diagnostics** for malformed endpoint URLs, invalid headers JSON, empty header names, and non-string header values.
-- **Variable Payload Alignment Diagnostics** to flag extra input keys and missing required variable values before execution, with safe fallback behavior for multi-operation documents.
+- **Expanded Diagnostics** for malformed endpoint URLs, URL credentials/query/hash/path quality issues, invalid headers JSON, empty header names, duplicate header keys (case-insensitive), missing content negotiation headers, auth scheme warnings, and header whitespace validation.
+- **Variable Payload Alignment + Runtime Type Diagnostics** to flag extra input keys, missing required values, nulls for non-null variables, and runtime scalar/list/object mismatches before execution, with safe fallback behavior for multi-operation documents.
 - **Operation Volume Warning** to highlight oversized multi-operation documents that are harder to review and debug.
-- **Advanced Diagnostics** for duplicate operations/fragments, unknown fragment spreads, variable usage mismatches, duplicate variable definitions, and insecure endpoint protocol checks.
+- **Advanced Diagnostics** for duplicate operations/fragments, unknown fragment spreads, cyclic fragment spreads, variable usage mismatches, duplicate variable definitions, insecure endpoint protocol checks, and empty operation selections.
 - **Document Metrics** panel to track operations, fragments, depth, and query size while authoring.
 - **Diagnostics Filters** to focus quickly on errors vs warnings.
 - **Diagnostics Markdown Export** for sharing bug reports and review context.

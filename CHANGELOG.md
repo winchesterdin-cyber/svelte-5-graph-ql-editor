@@ -62,3 +62,20 @@ All notable changes to this project will be documented in this file.
 - Reused the same history import normalization logic for JSON payload imports.
 - Recorded execution durations and error details in history entries.
 - Fixed query execution to read the latest store state before dispatching requests.
+
+## 2026-02-17
+
+### Added
+
+- Endpoint quality diagnostics for URL credentials, query params, hash fragments, and non-graphql-looking paths.
+- Header recommendation diagnostics for missing Accept/Content-Type, authorization scheme quality, duplicate case-insensitive header keys, and value whitespace checks.
+- Runtime variable type diagnostics for non-null null assignments, scalar mismatches, list shape mismatches, and input-object shape mismatches.
+- Fragment cycle diagnostics and empty-operation-selection diagnostics.
+
+### Fixed
+
+- Variable definition parsing now correctly supports list signatures like `[ID!]!`.
+
+### Tests
+
+- Added diagnostics regression tests for endpoint quality, headers quality, runtime variable typing, and cyclic fragments.

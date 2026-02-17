@@ -52,6 +52,88 @@ test("getDiagnostics warns for insecure http endpoints", () => {
   assert.ok(diagnostics.some((entry) => entry.code === "INSECURE_ENDPOINT"));
 });
 
+test("getDiagnostics adds endpoint quality diagnostics", () => {
+  const diagnostics = getDiagnostics({
+    query: "query GetUsers { users { id } }",
+    endpoint: "https://user:pass@example.com/api?env=dev#frag",
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_CREDENTIALS_IN_URL"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_QUERY_PARAMS"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_HASH_FRAGMENT"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_NON_GRAPHQL_PATH"),
+  );
+});
+
+test("getDiagnostics adds header recommendations and whitespace checks", () => {
+  const diagnostics = getDiagnostics({
+    query: "query GetUsers { users { id } }",
+    endpoint: "https://example.com/graphql",
+    headers: JSON.stringify({
+      Authorization: "token-only ",
+      "X-Trace": " abc123 ",
+    }),
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "AUTH_HEADER_SCHEME"));
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "HEADER_VALUE_WHITESPACE"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "MISSING_ACCEPT_HEADER"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "MISSING_CONTENT_TYPE_HEADER"),
+  );
+});
+
+test("getDiagnostics validates variable runtime value types", () => {
+  const diagnostics = getDiagnostics({
+    query:
+      "query Demo($id: ID!, $count: Int, $enabled: Boolean, $filter: UserFilter, $ids: [ID!]!) { user(id: $id) { id } }",
+    endpoint: "https://example.com/graphql",
+    variables: JSON.stringify({
+      id: null,
+      count: "10",
+      enabled: "true",
+      filter: "nope",
+      ids: "123",
+    }),
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "NULL_FOR_NON_NULL_VARIABLE"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "VARIABLE_SCALAR_TYPE_MISMATCH"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "VARIABLE_OBJECT_TYPE_MISMATCH"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "VARIABLE_LIST_TYPE_MISMATCH"),
+  );
+});
+
+test("getDiagnostics detects cyclic fragment spreads", () => {
+  const diagnostics = getDiagnostics({
+    query: `query Demo { user { ...A } }
+fragment A on User { ...B }
+fragment B on User { ...A }`,
+    endpoint: "https://example.com/graphql",
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "CYCLIC_FRAGMENT_SPREAD"),
+  );
+});
 test("getSchemaSuggestions filters root fields by token and builds snippets", () => {
   const suggestions = getSchemaSuggestions({
     schema: {
