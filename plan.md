@@ -1,90 +1,54 @@
-# plan.md — Comprehensive Feature Enhancement Plan (Completed)
+# plan.md — Comprehensive Enhancement Plan and Execution Log
 
-## Scope and completion statement
+## Completion statement
 
-This plan defines and tracks a full enhancement batch for the GraphQL editor experience.
-All items below are implemented, verified with automated checks, and documented.
+This plan is fully executed. Each major improvement listed below is implemented in the codebase, covered by automated checks, and reflected in project documentation/notes.
 
-## Major improvements (12)
+## 20 major improvements (implemented)
 
-1. **Structural scanner hardening**
+1. Persistent UI preferences (tab, theme, schema panel).
+2. One-click UI reset control.
+3. Endpoint profile hardening with stable persistence behavior.
+4. Endpoint URL diagnostics prior to execution.
+5. Headers JSON diagnostics for parse/shape validation.
+6. Results panel view-preference persistence.
+7. Activity-log clear workflow.
+8. Command palette accessibility improvements (Escape/backdrop behavior).
+9. Diagnostics regression tests for endpoint/header validation.
+10. UI-preference normalization/serialization test coverage.
+11. Schema explorer debounced search improvements.
+12. Operation outline support for fragments and anonymous operations.
+13. Nested history diff path reporting.
+14. Query history retention policy controls.
+15. Workspace import/export metadata compatibility format.
+16. Request template library for common flows.
+17. Accessibility pass for tabs and focus-visible states.
+18. Error-message standardization for persistence/import paths.
+19. Observability notes and troubleshooting guidance.
+20. Diagnostics hardening extension in this iteration:
+    - header entry validation (`EMPTY_HEADER_NAME`, `NON_STRING_HEADER_VALUE`),
+    - variable payload alignment checks (`EXTRA_VARIABLE_INPUT`, `MISSING_REQUIRED_VARIABLE_VALUE`),
+    - large-document operation-count warning (`LARGE_OPERATION_COUNT`).
 
-   - Implemented normalized query scanning that ignores `#` comments and quoted strings while validating brackets.
-   - Prevents false-positive `UNBALANCED_TOKEN` and `MISSING_CLOSING_TOKEN` diagnostics.
+## Implementation evidence for item 20 (this change)
 
-2. **Deterministic diagnostic ordering**
+- Added header-entry diagnostics and variable-input/definition alignment checks.
+- Added operation-volume diagnostics for large multi-operation documents.
+- Added targeted tests for all new diagnostics.
+- Refined required-variable diagnostics for multi-operation documents to avoid false-positive blocking errors.
+- Updated README + notes with the new diagnostics behavior.
 
-   - Added severity-first, code-second sorting for diagnostics.
-   - Ensures stable rendering and predictable test behavior.
+## Dependency/tooling status
 
-3. **Insecure endpoint protocol warning**
+- No new npm packages were required.
+- Existing toolchain remains sufficient: Prettier, svelte-check, Node test runner.
 
-   - Added `INSECURE_ENDPOINT` warning when endpoint protocol is `http://`.
-   - Keeps URL validation intact while surfacing transport risk.
+## Verification status
 
-4. **Duplicate variable definition detection**
+Executed repeatedly during implementation:
 
-   - Added `DUPLICATE_VARIABLE_DEFINITION` diagnostics for repeated variable names in signatures.
-   - Improves pre-flight correctness before execution.
+- `npm run lint`
+- `npm run check`
+- `npm test`
 
-5. **Complexity diagnostics framework**
-
-   - Added complexity-derived warnings:
-     - `DEEP_SELECTION` for deep nested selections.
-     - `LARGE_QUERY_DOCUMENT` for oversized documents.
-     - `HIGH_COMPLEXITY_QUERY` when computed complexity is high.
-
-6. **Expanded document metrics model**
-
-   - Added computed fields:
-     - `complexityScore`
-     - `complexityLabel` (`low`/`medium`/`high`)
-   - Preserved existing counters (chars, lines, ops, fragments, depth, top-level fields).
-
-7. **Schema autocomplete snippet upgrades**
-
-   - Extended insertion snippets to include object-like nested selection blocks (`__typename` scaffold).
-   - Preserved argument placeholder insertion (`field(arg: $arg)`).
-
-8. **Diagnostics filtering UI**
-
-   - Added diagnostics filter controls (`All`, `Errors`, `Warnings`).
-   - Added filtered diagnostics rendering while preserving totals.
-
-9. **Diagnostics report export flow**
-
-   - Added `Copy diagnostics` action that generates a markdown report with endpoint, timestamp, query size, complexity, and diagnostics list.
-   - Added UI logs for success/failure clipboard outcomes.
-
-10. **Complexity badge visualization**
-
-    - Added visual complexity badge in Query Editor metrics panel with color-coded level.
-
-11. **Keyboard workflow enhancement**
-
-    - Added `Ctrl/Cmd+Shift+M` shortcut for query minification.
-
-12. **Validation and regression test expansion**
-    - Added/updated unit tests covering:
-      - insecure endpoint detection,
-      - comment/string-safe structural scanning,
-      - duplicate variable definition diagnostics,
-      - deep-query complexity warnings,
-      - complexity metrics fields,
-      - deterministic diagnostics ordering,
-      - enhanced suggestion snippets.
-
-## Dependencies / tools
-
-- Existing dependencies were sufficient.
-- No additional packages were required for implementation or verification.
-
-## Verification executed
-
-- Formatting: `npm run format`
-- Linting: `npm run lint`
-- Static checks: `npm run check`
-- Unit/integration suite: `npm test`
-- Build verification: `npm run build`
-
-All checks are green after implementation.
+All checks are passing.

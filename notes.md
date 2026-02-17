@@ -52,3 +52,11 @@
 - Added complexity score/label metrics and warnings for deep/high-complexity query documents.
 - Added Query Editor diagnostics filters and markdown diagnostics export for bug-report workflows.
 - Added shortcut `Ctrl/Cmd+Shift+M` for query minification and updated user-facing guidance.
+
+## Enhancement batch: payload/header diagnostics expansion
+
+- Added diagnostics for empty header names and non-string header values to reduce request serialization surprises.
+- Added diagnostics to compare provided variables JSON against declared operation variables (extra keys + missing required values).
+- Added warning when a document contains more than five operations, helping teams keep requests reviewable.
+
+- Refined variable diagnostics to avoid false-positive missing-required errors when a document contains multiple operations; now emits an informational guidance diagnostic instead.
