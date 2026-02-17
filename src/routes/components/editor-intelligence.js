@@ -139,6 +139,7 @@ export function getDiagnostics({
   diagnostics.push(...getFragmentDiagnostics(source));
   diagnostics.push(...getVariableDiagnostics(source));
   diagnostics.push(...getAnonymousOperationDiagnostics(source));
+  diagnostics.push(...getOperationVolumeDiagnostics(operations));
 
   if (source.trim() && operations.length === 0) {
     diagnostics.push({
@@ -197,6 +198,8 @@ export function getDiagnostics({
           code: "HEADERS_SHAPE",
           message: "Headers JSON must be an object.",
         });
+      } else {
+        diagnostics.push(...getHeaderEntryDiagnostics(parsedHeaders));
       }
     } catch (error) {
       diagnostics.push({
@@ -217,6 +220,10 @@ export function getDiagnostics({
           code: "VARIABLES_SHAPE",
           message: "Variables JSON must be an object.",
         });
+      } else {
+        diagnostics.push(
+          ...getVariableInputDiagnostics(source, parsed, operations),
+        );
       }
     } catch (error) {
       diagnostics.push({
@@ -509,6 +516,107 @@ function getAnonymousOperationDiagnostics(source) {
         "Only one anonymous operation is allowed per GraphQL document. Name additional operations.",
     },
   ];
+}
+
+function getOperationVolumeDiagnostics(operations) {
+  // Large multi-operation documents are hard to debug and often hide stale operations.
+  if (operations.length <= 5) return [];
+
+  return [
+    {
+      level: "warn",
+      code: "LARGE_OPERATION_COUNT",
+      message:
+        "Document includes more than 5 operations. Split large documents to simplify review and execution.",
+    },
+  ];
+}
+
+function getHeaderEntryDiagnostics(parsedHeaders) {
+  const diagnostics = [];
+
+  Object.entries(parsedHeaders).forEach(([rawKey, rawValue]) => {
+    const key = String(rawKey).trim();
+    if (!key) {
+      diagnostics.push({
+        level: "error",
+        code: "EMPTY_HEADER_NAME",
+        message: "Headers cannot include empty key names.",
+      });
+    }
+
+    if (typeof rawValue !== "string") {
+      diagnostics.push({
+        level: "warn",
+        code: "NON_STRING_HEADER_VALUE",
+        message: `Header \"${rawKey}\" should be a string value for predictable request serialization.`,
+      });
+    }
+  });
+
+  return diagnostics;
+}
+
+function getVariableInputDiagnostics(source, parsedVariables, operations = []) {
+  const diagnostics = [];
+  const variableDefinitions = getVariableDefinitionMetadata(source);
+
+  Object.keys(parsedVariables).forEach((variableName) => {
+    if (variableDefinitions.allVariables.has(variableName)) return;
+    diagnostics.push({
+      level: "warn",
+      code: "EXTRA_VARIABLE_INPUT",
+      message: `Variable input "${variableName}" is not declared in the active operation signatures.`,
+    });
+  });
+
+  const operationCount = operations.length;
+  if (operationCount > 1 && variableDefinitions.requiredVariables.length) {
+    // Avoid false errors when documents define multiple operations but execute one at a time.
+    diagnostics.push({
+      level: "info",
+      code: "MULTI_OPERATION_VARIABLE_VALIDATION_SKIPPED",
+      message:
+        "Required variable presence checks are skipped for multi-operation documents. Run one operation at a time for strict validation.",
+    });
+    return diagnostics;
+  }
+
+  variableDefinitions.requiredVariables.forEach((metadata) => {
+    if (Object.hasOwn(parsedVariables, metadata.name)) return;
+    diagnostics.push({
+      level: "error",
+      code: "MISSING_REQUIRED_VARIABLE_VALUE",
+      message: `Missing required variable input "$${metadata.name}" (${metadata.type}).`,
+    });
+  });
+
+  return diagnostics;
+}
+
+function getVariableDefinitionMetadata(source) {
+  const allVariables = new Set();
+  const requiredVariables = [];
+  const variableSections = String(source).match(/\(([^)]*\$[^)]*)\)/g) ?? [];
+
+  variableSections.forEach((section) => {
+    const matches = section.matchAll(
+      /\$([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_\[\]!]*)\s*(=\s*[^,)]+)?/g,
+    );
+
+    for (const match of matches) {
+      const [, name, type, defaultValue] = match;
+      allVariables.add(name);
+      if (type.endsWith("!") && !defaultValue) {
+        requiredVariables.push({ name, type });
+      }
+    }
+  });
+
+  return {
+    allVariables,
+    requiredVariables,
+  };
 }
 
 function getComplexityDiagnostics(metrics) {
