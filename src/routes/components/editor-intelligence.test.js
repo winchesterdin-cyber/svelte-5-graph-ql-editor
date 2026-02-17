@@ -210,6 +210,62 @@ test("getDiagnostics emits high complexity warning for deep documents", () => {
   assert.ok(diagnostics.some((entry) => entry.code === "DEEP_SELECTION"));
 });
 
+test("getDiagnostics validates headers entries and variable payload alignment", () => {
+  const diagnostics = getDiagnostics({
+    query:
+      'query GetUsers($required: ID!, $optional: String = "demo") { user(id: $required) { id } }',
+    endpoint: "https://example.com/graphql",
+    headers: '{"": "bad", "x-number": 123}',
+    variables: '{"extra": true}',
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "EMPTY_HEADER_NAME"));
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "NON_STRING_HEADER_VALUE"),
+  );
+  assert.ok(diagnostics.some((entry) => entry.code === "EXTRA_VARIABLE_INPUT"));
+  assert.ok(
+    diagnostics.some(
+      (entry) => entry.code === "MISSING_REQUIRED_VARIABLE_VALUE",
+    ),
+  );
+});
+
+test("getDiagnostics warns when document contains many operations", () => {
+  const diagnostics = getDiagnostics({
+    query: `query One { viewer { id } }
+query Two { viewer { id } }
+query Three { viewer { id } }
+query Four { viewer { id } }
+query Five { viewer { id } }
+query Six { viewer { id } }`,
+    endpoint: "https://example.com/graphql",
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "LARGE_OPERATION_COUNT"),
+  );
+});
+
+test("getDiagnostics skips strict required-variable checks for multi-operation documents", () => {
+  const diagnostics = getDiagnostics({
+    query: `query First($id: ID!) { user(id: $id) { id } }
+query Second($slug: String!) { post(slug: $slug) { id } }`,
+    endpoint: "https://example.com/graphql",
+    variables: "{}",
+  });
+
+  assert.ok(
+    diagnostics.some(
+      (entry) => entry.code === "MULTI_OPERATION_VARIABLE_VALIDATION_SKIPPED",
+    ),
+  );
+  assert.ok(
+    !diagnostics.some(
+      (entry) => entry.code === "MISSING_REQUIRED_VARIABLE_VALUE",
+    ),
+  );
+});
 test("getDiagnostics are returned in deterministic severity/code order", () => {
   const diagnostics = getDiagnostics({
     query: "query Demo($id: ID, $id: ID){ user(id: $missing) { id } }",
