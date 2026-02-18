@@ -362,3 +362,100 @@ test("getDiagnostics are returned in deterministic severity/code order", () => {
   assert.ok(firstWarnIndex >= 0);
   assert.ok(firstErrorIndex < firstWarnIndex);
 });
+
+test("getDiagnostics reports document style and convention guidance", () => {
+  const diagnostics = getDiagnostics({
+    query: `query get_users {\n\t__typename  \n\n\n\n  # TODO clean up this query\n  users(first: 10, search: \"${"x".repeat(150)}\") { id }\n}`,
+    endpoint: "https://example.com/graphql",
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "QUERY_CONTAINS_TABS"));
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "QUERY_TRAILING_WHITESPACE"),
+  );
+  assert.ok(diagnostics.some((entry) => entry.code === "QUERY_LONG_LINE"));
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "QUERY_EXCESSIVE_BLANK_LINES"),
+  );
+  assert.ok(diagnostics.some((entry) => entry.code === "QUERY_TODO_COMMENT"));
+  assert.ok(diagnostics.some((entry) => entry.code === "OPERATION_NAME_STYLE"));
+});
+
+test("getDiagnostics reports endpoint hygiene diagnostics", () => {
+  const diagnostics = getDiagnostics({
+    query: "query Query { __typename }",
+    endpoint: "https://localhost:443/v2/",
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "ENDPOINT_LOCALHOST"));
+  assert.ok(
+    diagnostics.some(
+      (entry) => entry.code === "ENDPOINT_DEFAULT_PORT_EXPLICIT",
+    ),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_TRAILING_SLASH"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_VERSIONED_PATH"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "OPERATION_NAME_TOO_GENERIC"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "TYPENAME_ONLY_SELECTION"),
+  );
+});
+
+test("getDiagnostics reports root endpoint and duplicate top-level fields", () => {
+  const diagnostics = getDiagnostics({
+    query: "query Demo {\n  viewer\n  viewer\n}",
+    endpoint: "https://api.example.com/",
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "ENDPOINT_ROOT_PATH"));
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "DUPLICATE_TOP_LEVEL_FIELD"),
+  );
+});
+
+test("getDiagnostics reports advanced header security diagnostics", () => {
+  const diagnostics = getDiagnostics({
+    query: "query Demo { viewer { id } }",
+    endpoint: "https://example.com/graphql",
+    headers: JSON.stringify({
+      Accept: "*/*",
+      "Content-Type": "text/plain",
+      Authorization: "Bearer ",
+      "X-API-Key": "   ",
+      Cookie: "session=abc",
+      Host: "example.com",
+      Authorization2: "Basic abc123",
+    }),
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ACCEPT_HEADER_WILDCARD"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "CONTENT_TYPE_NOT_JSON"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "AUTH_BEARER_MISSING_TOKEN"),
+  );
+  assert.ok(diagnostics.some((entry) => entry.code === "EMPTY_API_KEY_HEADER"));
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "COOKIE_HEADER_PRESENT"),
+  );
+  assert.ok(diagnostics.some((entry) => entry.code === "HOST_HEADER_OVERRIDE"));
+});
+
+test("getDiagnostics warns when using basic auth header scheme", () => {
+  const diagnostics = getDiagnostics({
+    query: "query Demo { viewer { id } }",
+    endpoint: "https://example.com/graphql",
+    headers: JSON.stringify({ Authorization: "Basic abc123" }),
+  });
+
+  assert.ok(diagnostics.some((entry) => entry.code === "AUTH_BASIC_SCHEME"));
+});

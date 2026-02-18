@@ -1,5 +1,13 @@
 # Team Notes
 
+## 2026-02-17 — Diagnostics hygiene expansion (20-item execution)
+
+- Added query style diagnostics: tabs, trailing whitespace, long lines, excessive blank lines, and TODO/FIXME comments.
+- Added operation convention diagnostics: PascalCase name guidance, generic-name warning, duplicate top-level field detection, and typename-only selection hints.
+- Added endpoint hygiene diagnostics: localhost awareness, explicit default port hints, trailing slash/root path checks, and versioned-path guidance.
+- Added header safety diagnostics: wildcard Accept, non-JSON Content-Type, empty Bearer/API-key detection, Basic auth warning, and Cookie/Host override warnings.
+- Added comprehensive regression coverage in `editor-intelligence.test.js` and re-ran full lint/check/test pipeline successfully.
+
 ## Iteration Review Summary
 
 - Completed all 20 tracked improvements in `implementation-plan.md`.
