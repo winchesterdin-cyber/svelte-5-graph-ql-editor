@@ -72,7 +72,7 @@ function getTopLevelFieldsForOperation(query, operationStartIndex) {
 
   const flushSegment = () => {
     const match = segment.match(/([A-Za-z_][A-Za-z0-9_]*)/);
-    if (match && !fields.includes(match[1])) {
+    if (match) {
       fields.push(match[1]);
     }
     segment = "";
@@ -142,6 +142,9 @@ export function getDiagnostics({
   diagnostics.push(...getAnonymousOperationDiagnostics(source));
   diagnostics.push(...getOperationSelectionDiagnostics(operations));
   diagnostics.push(...getOperationVolumeDiagnostics(operations));
+  diagnostics.push(...getDocumentStyleDiagnostics(source));
+  diagnostics.push(...getOperationConventionDiagnostics(operations));
+  diagnostics.push(...getOperationFieldDiagnostics(operations));
 
   if (source.trim() && operations.length === 0) {
     diagnostics.push({
@@ -168,7 +171,9 @@ export function getDiagnostics({
     try {
       // Validate URL format early to prevent avoidable request failures.
       const parsedUrl = new URL(normalizedEndpoint);
-      diagnostics.push(...getEndpointQualityDiagnostics(parsedUrl));
+      diagnostics.push(
+        ...getEndpointQualityDiagnostics(parsedUrl, endpointText),
+      );
       if (parsedUrl.protocol === "http:") {
         diagnostics.push({
           level: "warn",
@@ -204,6 +209,7 @@ export function getDiagnostics({
       } else {
         diagnostics.push(...getHeaderEntryDiagnostics(parsedHeaders));
         diagnostics.push(...getHeaderRecommendationDiagnostics(parsedHeaders));
+        diagnostics.push(...getHeaderSecurityDiagnostics(parsedHeaders));
       }
     } catch (error) {
       diagnostics.push({
@@ -601,6 +607,141 @@ function getOperationVolumeDiagnostics(operations) {
   ];
 }
 
+function getDocumentStyleDiagnostics(source) {
+  const diagnostics = [];
+  const lines = String(source).split("\n");
+  let longestLineLength = 0;
+  let trailingWhitespaceCount = 0;
+  let tabCharacterCount = 0;
+  let consecutiveBlankLines = 0;
+  let maxConsecutiveBlankLines = 0;
+
+  lines.forEach((line) => {
+    longestLineLength = Math.max(longestLineLength, line.length);
+    if (/\s+$/.test(line)) {
+      trailingWhitespaceCount += 1;
+    }
+    if (line.includes("\t")) {
+      tabCharacterCount += 1;
+    }
+
+    if (!line.trim()) {
+      consecutiveBlankLines += 1;
+      maxConsecutiveBlankLines = Math.max(
+        maxConsecutiveBlankLines,
+        consecutiveBlankLines,
+      );
+    } else {
+      consecutiveBlankLines = 0;
+    }
+  });
+
+  if (tabCharacterCount > 0) {
+    diagnostics.push({
+      level: "info",
+      code: "QUERY_CONTAINS_TABS",
+      message:
+        "Query contains tab characters. Prefer spaces for consistent formatting across tools.",
+    });
+  }
+
+  if (trailingWhitespaceCount > 0) {
+    diagnostics.push({
+      level: "info",
+      code: "QUERY_TRAILING_WHITESPACE",
+      message:
+        "Query contains trailing whitespace on one or more lines. Trim line endings for cleaner diffs.",
+    });
+  }
+
+  if (longestLineLength >= 140) {
+    diagnostics.push({
+      level: "warn",
+      code: "QUERY_LONG_LINE",
+      message:
+        "Query has very long lines (140+ chars). Consider wrapping selections or arguments for readability.",
+    });
+  }
+
+  if (maxConsecutiveBlankLines >= 3) {
+    diagnostics.push({
+      level: "info",
+      code: "QUERY_EXCESSIVE_BLANK_LINES",
+      message:
+        "Query contains large blank-line gaps. Compact formatting can make review and debugging easier.",
+    });
+  }
+
+  if (/#[^\n]*\b(TODO|FIXME|XXX)\b/i.test(source)) {
+    diagnostics.push({
+      level: "info",
+      code: "QUERY_TODO_COMMENT",
+      message:
+        "Query includes TODO/FIXME comments. Confirm temporary notes are intentional before sharing.",
+    });
+  }
+
+  return diagnostics;
+}
+
+function getOperationConventionDiagnostics(operations) {
+  const diagnostics = [];
+
+  operations.forEach((entry) => {
+    if (entry.type === "fragment") return;
+
+    if (!entry.isAnonymous && !/^[A-Z][A-Za-z0-9]*$/.test(entry.name)) {
+      diagnostics.push({
+        level: "info",
+        code: "OPERATION_NAME_STYLE",
+        message: `Operation "${entry.name}" should use PascalCase for consistent naming conventions.`,
+      });
+    }
+
+    if (["Query", "Mutation", "Subscription"].includes(entry.name)) {
+      diagnostics.push({
+        level: "warn",
+        code: "OPERATION_NAME_TOO_GENERIC",
+        message: `Operation "${entry.name}" is generic. Use a more specific name to improve traceability.`,
+      });
+    }
+  });
+
+  return diagnostics;
+}
+
+function getOperationFieldDiagnostics(operations) {
+  const diagnostics = [];
+
+  operations.forEach((operation) => {
+    if (operation.type === "fragment") return;
+
+    const fieldCounts = new Map();
+    operation.fields.forEach((field) => {
+      fieldCounts.set(field, (fieldCounts.get(field) ?? 0) + 1);
+    });
+
+    fieldCounts.forEach((count, fieldName) => {
+      if (count <= 1) return;
+      diagnostics.push({
+        level: "warn",
+        code: "DUPLICATE_TOP_LEVEL_FIELD",
+        message: `Operation "${operation.name}" requests top-level field "${fieldName}" ${count} times. Consider aliases or deduplication.`,
+      });
+    });
+
+    if (operation.fields.length === 1 && operation.fields[0] === "__typename") {
+      diagnostics.push({
+        level: "info",
+        code: "TYPENAME_ONLY_SELECTION",
+        message: `Operation "${operation.name}" selects only __typename. Confirm this is intentional for your debugging workflow.`,
+      });
+    }
+  });
+
+  return diagnostics;
+}
+
 function getHeaderEntryDiagnostics(parsedHeaders) {
   const diagnostics = [];
 
@@ -627,7 +768,7 @@ function getHeaderEntryDiagnostics(parsedHeaders) {
 }
 
 // Endpoint diagnostics beyond strict URL validity to catch risky-but-valid configurations.
-function getEndpointQualityDiagnostics(parsedUrl) {
+function getEndpointQualityDiagnostics(parsedUrl, rawEndpoint = "") {
   const diagnostics = [];
 
   if (parsedUrl.username || parsedUrl.password) {
@@ -663,6 +804,51 @@ function getEndpointQualityDiagnostics(parsedUrl) {
       code: "ENDPOINT_NON_GRAPHQL_PATH",
       message:
         'Endpoint path does not include "graphql". Verify this URL points to your GraphQL handler.',
+    });
+  }
+
+  if (["localhost", "127.0.0.1"].includes(parsedUrl.hostname)) {
+    diagnostics.push({
+      level: "info",
+      code: "ENDPOINT_LOCALHOST",
+      message:
+        "Endpoint targets localhost. Verify this endpoint is reachable from your current runtime environment.",
+    });
+  }
+
+  if (/(https?:\/\/[^/]+:(80|443))(\/|$)/i.test(rawEndpoint)) {
+    diagnostics.push({
+      level: "info",
+      code: "ENDPOINT_DEFAULT_PORT_EXPLICIT",
+      message:
+        "Endpoint explicitly includes a default HTTP(S) port. You can usually omit it to reduce URL noise.",
+    });
+  }
+
+  if (parsedUrl.pathname.length > 1 && parsedUrl.pathname.endsWith("/")) {
+    diagnostics.push({
+      level: "info",
+      code: "ENDPOINT_TRAILING_SLASH",
+      message:
+        "Endpoint path ends with a trailing slash. Ensure this matches your gateway routing expectations.",
+    });
+  }
+
+  if (parsedUrl.pathname === "/") {
+    diagnostics.push({
+      level: "warn",
+      code: "ENDPOINT_ROOT_PATH",
+      message:
+        "Endpoint uses the root path (/). Confirm your GraphQL server is actually mounted at this location.",
+    });
+  }
+
+  if (/\b(v\d+)\b/i.test(parsedUrl.pathname)) {
+    diagnostics.push({
+      level: "info",
+      code: "ENDPOINT_VERSIONED_PATH",
+      message:
+        "Endpoint path includes an API version segment. Keep editor presets aligned when backend versions change.",
     });
   }
 
@@ -739,6 +925,38 @@ function getHeaderRecommendationDiagnostics(parsedHeaders) {
     });
   }
 
+  const acceptHeader = headerEntries.find(
+    (entry) => entry.normalizedKey === "accept",
+  );
+  if (
+    acceptHeader &&
+    typeof acceptHeader.value === "string" &&
+    acceptHeader.value.trim() === "*/*"
+  ) {
+    diagnostics.push({
+      level: "info",
+      code: "ACCEPT_HEADER_WILDCARD",
+      message:
+        "Accept header is set to */*. Consider application/json for more predictable GraphQL response handling.",
+    });
+  }
+
+  const contentTypeHeader = headerEntries.find(
+    (entry) => entry.normalizedKey === "content-type",
+  );
+  if (
+    contentTypeHeader &&
+    typeof contentTypeHeader.value === "string" &&
+    !/application\/json/i.test(contentTypeHeader.value)
+  ) {
+    diagnostics.push({
+      level: "warn",
+      code: "CONTENT_TYPE_NOT_JSON",
+      message:
+        "Content-Type is not application/json. Most GraphQL HTTP servers expect JSON request payloads.",
+    });
+  }
+
   headerEntries.forEach((entry) => {
     if (typeof entry.value !== "string") return;
     if (entry.value !== entry.value.trim()) {
@@ -749,6 +967,75 @@ function getHeaderRecommendationDiagnostics(parsedHeaders) {
       });
     }
   });
+
+  return diagnostics;
+}
+
+function getHeaderSecurityDiagnostics(parsedHeaders) {
+  const diagnostics = [];
+  const normalizedHeaders = Object.entries(parsedHeaders).map(
+    ([key, value]) => ({
+      normalizedKey: String(key).trim().toLowerCase(),
+      value,
+    }),
+  );
+
+  const authorization = normalizedHeaders.find(
+    (entry) => entry.normalizedKey === "authorization",
+  );
+  if (typeof authorization?.value === "string") {
+    const value = authorization.value.trim();
+    if (/^Bearer\s*$/i.test(value)) {
+      diagnostics.push({
+        level: "error",
+        code: "AUTH_BEARER_MISSING_TOKEN",
+        message:
+          "Authorization header uses Bearer scheme without a token value.",
+      });
+    }
+
+    if (/^Basic\s+/i.test(value)) {
+      diagnostics.push({
+        level: "warn",
+        code: "AUTH_BASIC_SCHEME",
+        message:
+          "Authorization header uses Basic auth. Avoid Basic credentials for shared or production traffic when possible.",
+      });
+    }
+  }
+
+  const apiKeyHeader = normalizedHeaders.find((entry) =>
+    ["x-api-key", "apikey", "api-key"].includes(entry.normalizedKey),
+  );
+  if (typeof apiKeyHeader?.value === "string" && !apiKeyHeader.value.trim()) {
+    diagnostics.push({
+      level: "error",
+      code: "EMPTY_API_KEY_HEADER",
+      message:
+        "API key header is present but empty. Populate a key value or remove the header.",
+    });
+  }
+
+  const hasCookieHeader = normalizedHeaders.some(
+    (entry) => entry.normalizedKey === "cookie",
+  );
+  if (hasCookieHeader) {
+    diagnostics.push({
+      level: "warn",
+      code: "COOKIE_HEADER_PRESENT",
+      message:
+        "Cookie header is set manually. Confirm this is safe and required for your GraphQL environment.",
+    });
+  }
+
+  if (normalizedHeaders.some((entry) => entry.normalizedKey === "host")) {
+    diagnostics.push({
+      level: "warn",
+      code: "HOST_HEADER_OVERRIDE",
+      message:
+        "Host header override detected. Custom Host values can break TLS routing and reverse proxy behavior.",
+    });
+  }
 
   return diagnostics;
 }

@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added diagnostics hygiene pack covering query formatting hints (tabs/trailing whitespace/long lines/blank-line gaps/TODO comments), operation naming conventions, and duplicate top-level field detection.
+- Added endpoint hygiene diagnostics for localhost targets, explicit default ports, trailing slashes, root-path usage, and versioned paths.
+- Added header safety diagnostics for wildcard Accept headers, non-JSON content types, empty Bearer/API-key values, Basic auth awareness, and Cookie/Host header overrides.
+- Expanded editor-intelligence tests with regression cases validating all newly introduced diagnostics.
 - Added repository-level agent guidelines in `agents.md`.
 - Added CSV export for table-mode query results in the Results panel.
 - Added a table column selector to focus on specific fields in Results table view.
@@ -67,6 +71,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added diagnostics hygiene pack covering query formatting hints (tabs/trailing whitespace/long lines/blank-line gaps/TODO comments), operation naming conventions, and duplicate top-level field detection.
+- Added endpoint hygiene diagnostics for localhost targets, explicit default ports, trailing slashes, root-path usage, and versioned paths.
+- Added header safety diagnostics for wildcard Accept headers, non-JSON content types, empty Bearer/API-key values, Basic auth awareness, and Cookie/Host header overrides.
+- Expanded editor-intelligence tests with regression cases validating all newly introduced diagnostics.
 - Endpoint quality diagnostics for URL credentials, query params, hash fragments, and non-graphql-looking paths.
 - Header recommendation diagnostics for missing Accept/Content-Type, authorization scheme quality, duplicate case-insensitive header keys, and value whitespace checks.
 - Runtime variable type diagnostics for non-null null assignments, scalar mismatches, list shape mismatches, and input-object shape mismatches.

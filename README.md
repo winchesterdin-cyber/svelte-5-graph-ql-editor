@@ -31,6 +31,7 @@ variables editor, schema explorer, and results panel for exploring GraphQL APIs.
 - **Variable Payload Alignment + Runtime Type Diagnostics** to flag extra input keys, missing required values, nulls for non-null variables, and runtime scalar/list/object mismatches before execution, with safe fallback behavior for multi-operation documents.
 - **Operation Volume Warning** to highlight oversized multi-operation documents that are harder to review and debug.
 - **Advanced Diagnostics** for duplicate operations/fragments, unknown fragment spreads, cyclic fragment spreads, variable usage mismatches, duplicate variable definitions, insecure endpoint protocol checks, and empty operation selections.
+- **Diagnostics Hygiene Pack** adds query-style checks (tabs/trailing whitespace/long lines/TODO comments), endpoint hygiene checks (localhost/default ports/root/trailing/versioned paths), and header safety checks (wildcard Accept, non-JSON content type, empty Bearer/API key, Cookie/Host overrides).
 - **Document Metrics** panel to track operations, fragments, depth, and query size while authoring.
 - **Diagnostics Filters** to focus quickly on errors vs warnings.
 - **Diagnostics Markdown Export** for sharing bug reports and review context.
