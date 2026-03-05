@@ -165,7 +165,7 @@ export function getDiagnostics({
       message: "Endpoint is required before execution.",
     });
   } else {
-    const normalizedEndpoint = endpointText.startsWith("http")
+    const normalizedEndpoint = /^[a-z][a-z0-9+.-]*:\/\//i.test(endpointText)
       ? endpointText
       : `https://${endpointText}`;
     try {
@@ -613,6 +613,7 @@ function getDocumentStyleDiagnostics(source) {
   let longestLineLength = 0;
   let trailingWhitespaceCount = 0;
   let tabCharacterCount = 0;
+  let mixedIndentationCount = 0;
   let consecutiveBlankLines = 0;
   let maxConsecutiveBlankLines = 0;
 
@@ -623,6 +624,10 @@ function getDocumentStyleDiagnostics(source) {
     }
     if (line.includes("\t")) {
       tabCharacterCount += 1;
+    }
+    // Mixed tabs/spaces in a single indentation prefix are easy to miss in reviews.
+    if (/^ +\t|^\t+ /.test(line)) {
+      mixedIndentationCount += 1;
     }
 
     if (!line.trim()) {
@@ -642,6 +647,15 @@ function getDocumentStyleDiagnostics(source) {
       code: "QUERY_CONTAINS_TABS",
       message:
         "Query contains tab characters. Prefer spaces for consistent formatting across tools.",
+    });
+  }
+
+  if (mixedIndentationCount > 0) {
+    diagnostics.push({
+      level: "warn",
+      code: "QUERY_MIXED_INDENTATION",
+      message:
+        "Query mixes tabs and spaces in indentation. Use one indentation style to keep diffs deterministic.",
     });
   }
 
@@ -762,6 +776,22 @@ function getHeaderEntryDiagnostics(parsedHeaders) {
         message: `Header \"${rawKey}\" should be a string value for predictable request serialization.`,
       });
     }
+
+    if (typeof rawValue === "string" && /[\r\n\u0000]/.test(rawValue)) {
+      diagnostics.push({
+        level: "error",
+        code: "HEADER_VALUE_CONTROL_CHAR",
+        message: `Header \"${rawKey}\" contains newline or control characters, which can break requests and pose header-injection risks.`,
+      });
+    }
+
+    if (typeof rawValue === "string" && rawValue.length > 1024) {
+      diagnostics.push({
+        level: "warn",
+        code: "HEADER_VALUE_TOO_LONG",
+        message: `Header \"${rawKey}\" is longer than 1024 characters. Very large header values are often rejected by gateways.`,
+      });
+    }
   });
 
   return diagnostics;
@@ -795,6 +825,16 @@ function getEndpointQualityDiagnostics(parsedUrl, rawEndpoint = "") {
       code: "ENDPOINT_HASH_FRAGMENT",
       message:
         "Endpoint URL includes a hash fragment. Fragments are ignored by HTTP requests and are usually unintended.",
+    });
+  }
+
+  // Transport support is HTTP-centric in this app; fail fast for unsupported schemes.
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    diagnostics.push({
+      level: "error",
+      code: "ENDPOINT_UNSUPPORTED_PROTOCOL",
+      message:
+        "Endpoint must use http:// or https:// for GraphQL-over-HTTP requests.",
     });
   }
 
@@ -1072,6 +1112,20 @@ function getVariableInputDiagnostics(source, parsedVariables, operations = []) {
       code: "MISSING_REQUIRED_VARIABLE_VALUE",
       message: `Missing required variable input "$${metadata.name}" (${metadata.type}).`,
     });
+  });
+
+  Object.entries(parsedVariables).forEach(([variableName, variableValue]) => {
+    // Catch copy/paste errors from shell templates where null/undefined are quoted.
+    if (
+      typeof variableValue === "string" &&
+      ["null", "undefined"].includes(variableValue.trim().toLowerCase())
+    ) {
+      diagnostics.push({
+        level: "warn",
+        code: "VARIABLE_STRING_SENTINEL",
+        message: `Variable "${variableName}" is the string "${variableValue}". Use JSON null (without quotes) or omit the variable when empty.`,
+      });
+    }
   });
 
   return diagnostics;

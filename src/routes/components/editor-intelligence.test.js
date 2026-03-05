@@ -459,3 +459,41 @@ test("getDiagnostics warns when using basic auth header scheme", () => {
 
   assert.ok(diagnostics.some((entry) => entry.code === "AUTH_BASIC_SCHEME"));
 });
+
+test("getDiagnostics reports mixed indentation and sentinel variable strings", () => {
+  const diagnostics = getDiagnostics({
+    query: `query Demo {
+ 	viewer { id }
+}`,
+    endpoint: "https://example.com/graphql",
+    variables: JSON.stringify({ id: "null", flag: "undefined" }),
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "QUERY_MIXED_INDENTATION"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "VARIABLE_STRING_SENTINEL"),
+  );
+});
+
+test("getDiagnostics reports unsupported protocol and unsafe header values", () => {
+  const diagnostics = getDiagnostics({
+    query: "query Demo { viewer { id } }",
+    endpoint: "ftp://example.com/graphql",
+    headers: JSON.stringify({
+      "X-Unsafe": "line1\nline2",
+      "X-Large": "a".repeat(1025),
+    }),
+  });
+
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "ENDPOINT_UNSUPPORTED_PROTOCOL"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "HEADER_VALUE_CONTROL_CHAR"),
+  );
+  assert.ok(
+    diagnostics.some((entry) => entry.code === "HEADER_VALUE_TOO_LONG"),
+  );
+});

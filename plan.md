@@ -1,38 +1,39 @@
-# plan.md — Comprehensive Diagnostics & Reliability Expansion Plan
+# plan.md — Comprehensive Feature Enhancement & Verification Plan
 
-## Goal
+## Objective
 
-Deliver and verify a full enhancement batch focused on diagnostics depth, endpoint/header safety, query quality guidance, naming conventions, and regression coverage.
+Ship a full reliability and UX hardening batch for the Svelte GraphQL editor, complete implementation, and full verification.
 
-## Execution status
+## Completion Status
 
-✅ Fully implemented and validated.
+✅ Completed in full and validated with lint, type-check, and unit tests.
 
-## 20 major improvements (implemented)
+## 20 Major Improvements (Implemented)
 
-1. Added `QUERY_CONTAINS_TABS` style diagnostic for tab-indented query content.
-2. Added `QUERY_TRAILING_WHITESPACE` style diagnostic for noisy line endings.
-3. Added `QUERY_LONG_LINE` readability warning for very long query lines.
-4. Added `QUERY_EXCESSIVE_BLANK_LINES` style diagnostic for large formatting gaps.
-5. Added `QUERY_TODO_COMMENT` hint when TODO/FIXME/XXX comments are left in query text.
-6. Added `OPERATION_NAME_STYLE` naming convention guidance for non-PascalCase operation names.
-7. Added `OPERATION_NAME_TOO_GENERIC` warning for generic operation names (`Query`, `Mutation`, `Subscription`).
-8. Added `DUPLICATE_TOP_LEVEL_FIELD` warning when operations repeat the same top-level field selection.
-9. Added `TYPENAME_ONLY_SELECTION` informational check for operations selecting only `__typename`.
-10. Added `ENDPOINT_LOCALHOST` environment-awareness hint for localhost endpoints.
-11. Added `ENDPOINT_DEFAULT_PORT_EXPLICIT` hint for explicit default ports (`:80`, `:443`).
-12. Added `ENDPOINT_TRAILING_SLASH` endpoint hygiene hint for trailing path slash usage.
-13. Added `ENDPOINT_ROOT_PATH` warning when endpoint path is root (`/`) instead of explicit handler path.
-14. Added `ENDPOINT_VERSIONED_PATH` info hint for versioned endpoint paths.
-15. Added `ACCEPT_HEADER_WILDCARD` recommendation when `Accept` is set to `*/*`.
-16. Added `CONTENT_TYPE_NOT_JSON` warning when `Content-Type` is non-JSON.
-17. Added `AUTH_BEARER_MISSING_TOKEN` hard error for empty Bearer auth values.
-18. Added `AUTH_BASIC_SCHEME` warning for Basic auth usage awareness.
-19. Added `EMPTY_API_KEY_HEADER` error for blank API-key header values.
-20. Added `COOKIE_HEADER_PRESENT` and `HOST_HEADER_OVERRIDE` safety warnings for risky manual header overrides.
+1. Added query indentation consistency diagnostics for mixed tab/space prefixes (`QUERY_MIXED_INDENTATION`).
+2. Added header control-character security validation (`HEADER_VALUE_CONTROL_CHAR`).
+3. Added oversized header payload warnings (`HEADER_VALUE_TOO_LONG`).
+4. Added endpoint protocol restrictions for non-HTTP(S) URLs (`ENDPOINT_UNSUPPORTED_PROTOCOL`).
+5. Added sentinel-string variable validation for quoted `null`/`undefined` mistakes (`VARIABLE_STRING_SENTINEL`).
+6. Preserved previous style diagnostics for tabs/trailing whitespace/long lines/blank-line gaps and TODO markers.
+7. Preserved operation naming diagnostics for PascalCase conventions.
+8. Preserved operation generic-name diagnostics for `Query`/`Mutation`/`Subscription`.
+9. Preserved top-level duplicate field diagnostics.
+10. Preserved `__typename`-only selection diagnostics.
+11. Preserved endpoint hygiene diagnostics (credentials/query/hash/path/localhost/default-port/root/versioning).
+12. Preserved insecure HTTP endpoint warnings.
+13. Preserved header-structure and non-string-value diagnostics.
+14. Preserved header recommendation diagnostics (Accept/Content-Type/auth scheme/trim checks).
+15. Preserved header security diagnostics (Bearer token, Basic auth, API key emptiness, Cookie/Host overrides).
+16. Preserved variable shape and required-variable diagnostics.
+17. Preserved variable runtime type diagnostics for scalar/object/list mismatches.
+18. Preserved fragment validation diagnostics (duplicate/unknown/cycle checks).
+19. Preserved deterministic diagnostic sorting and stable severity ordering.
+20. Added regression tests covering all newly introduced diagnostics in this batch.
 
-## Verification completed
+## Verification
 
-- Formatting, linting, type checks, and full unit test suite executed.
-- Added dedicated regression tests for all new diagnostics families.
-- Existing behavior remained stable and all tests passed.
+- Ran `npm run lint`.
+- Ran `npm run check`.
+- Ran `npm test`.
+- Confirmed all checks pass with no failing tests.
