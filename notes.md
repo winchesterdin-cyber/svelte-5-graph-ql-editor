@@ -1,3 +1,11 @@
+## 2026-02-18 — Diagnostics guardrail hardening
+
+- Added query mixed-indentation detection to catch tab/space drift before commits.
+- Added endpoint protocol validation to fail fast on non-HTTP(S) transports in the HTTP editor.
+- Added header value protections for control characters and oversized header payloads.
+- Added variable sentinel-string warnings for quoted `null` / `undefined` mistakes.
+- Added regression tests for every new diagnostics pathway and kept lint/check/test green.
+
 # Team Notes
 
 ## 2026-02-17 — Diagnostics hygiene expansion (20-item execution)
